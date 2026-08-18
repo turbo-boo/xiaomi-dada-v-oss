@@ -105,7 +105,6 @@ static ssize_t authentic_store(const struct class *class,
 			       const struct class_attribute *attr,
 			       const char *buf, size_t count)
 {
-	/* Stock exposes this as RW, but verification remains FG/UEFI-owned. */
 	return count;
 }
 static CLASS_ATTR_RW(authentic);
@@ -113,7 +112,7 @@ static CLASS_ATTR_RW(authentic);
 static ssize_t slave_authentic_show(const struct class *class,
 				    const struct class_attribute *attr, char *buf)
 {
-	int ret = strategy_class_fg_dual_is_chip_ok(NULL, FG_IC_SLAVE);
+	int ret = strategy_class_fg_dual_is_chip_ok(1);
 
 	if (ret == -EOPNOTSUPP || ret == -ENODEV)
 		return sysfs_emit(buf, "1\n");
