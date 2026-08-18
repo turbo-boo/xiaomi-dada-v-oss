@@ -93,7 +93,7 @@ static int bq27z561_read_voltage(struct bq27z561_mca *bq, int *value)
 static int bq27z561_read_current(struct bq27z561_mca *bq, u8 reg, int *value)
 {
 	u16 raw;
-	int current;
+	int signed_current;
 	int ret = bq27z561_read_word(bq, reg, &raw);
 
 	if (ret)
@@ -101,10 +101,10 @@ static int bq27z561_read_current(struct bq27z561_mca *bq, u8 reg, int *value)
 
 	/* Preserve Xiaomi's MCA sign convention and report microamps. */
 	if (raw > 32768)
-		current = -((int)raw - 65536);
+		signed_current = -((int)raw - 65536);
 	else
-		current = -(int)raw;
-	*value = current * 1000;
+		signed_current = -(int)raw;
+	*value = signed_current * 1000;
 	return 0;
 }
 
