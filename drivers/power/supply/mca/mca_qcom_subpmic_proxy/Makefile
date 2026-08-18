@@ -1,1 +1,1 @@
-# MCA Qualcomm sub-PMIC proxy is imported in follow-up commits.
+obj-$(CONFIG_MCA_QCOM_SUBPMIC) += mca_qcom_subpmic_proxy.o
