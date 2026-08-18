@@ -4,3 +4,4 @@ obj-$(CONFIG_XM_POWER_SUPPLY) += strategy_buckchg/
 obj-$(CONFIG_XM_POWER_SUPPLY) += strategy_jeita/
 obj-$(CONFIG_XM_POWER_SUPPLY) += strategy_quickchg/
 obj-$(CONFIG_XM_POWER_SUPPLY) += strategy_pd_auth/
+obj-$(CONFIG_XM_POWER_SUPPLY) += strategy_soc_limit/
