@@ -89,8 +89,10 @@ jobs:
           test -f out/drivers/power/supply/mca/mca_qcom_sysfs/mca_qcom_sysfs.o
           test -f out/drivers/power/supply/mca/mca_platform/mca_platform_wireless_class.o
           test -f out/drivers/power/supply/mca/mca_hardware_ic/wireless_ic/nuvolta_1652/nuvolta_1652.o
+          test -f out/drivers/power/supply/mca/mca_strategy/strategy_wireless/mca_wireless_class_compat.o
           test -f out/drivers/power/supply/mca/mca_strategy/strategy_wireless/mca_basic_wireless.o
           test -f out/drivers/power/supply/mca/mca_strategy/strategy_wireless/mca_quick_wireless_baa.o
+          test -f out/drivers/power/supply/mca/mca_strategy/strategy_wireless/mca_wireless_revchg_safe.o
           test -f out/drivers/power/supply/mca/mca_strategy/strategy_jeita/mca_buckchg_jeita.o
           test -f out/drivers/power/supply/mca/mca_strategy/strategy_quickchg/mca_strategy_quickchg_baa.o
           test -f out/drivers/power/supply/mca/mca_strategy/strategy_pd_auth/mca_pd_auth.o
@@ -106,8 +108,10 @@ jobs:
             -name 'mca_qcom_sysfs.o' -o \
             -name 'mca_platform_wireless_class.o' -o \
             -name 'nuvolta_1652.o' -o \
+            -name 'mca_wireless_class_compat.o' -o \
             -name 'mca_basic_wireless.o' -o \
             -name 'mca_quick_wireless_baa.o' -o \
+            -name 'mca_wireless_revchg_safe.o' -o \
             -name 'mca_buckchg_jeita.o' -o \
             -name 'mca_strategy_quickchg_baa.o' -o \
             -name 'mca_pd_auth.o' -o \
