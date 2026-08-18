@@ -97,7 +97,7 @@ jobs:
           fi
           exit "$status"
 
-      - name: Assert restored MCA layers were compiled
+      - name: Assert restored MCA layers and stock module names
         if: success()
         run: |
           test -f out/drivers/power/supply/mca/mca_qcom_subpmic_proxy/mca_qcom_subpmic_proxy.o
@@ -117,40 +117,37 @@ jobs:
           test -f out/drivers/power/supply/mca/mca_hardware_monitor/mca_lpd_detect.o
           test -f out/drivers/power/supply/mca/mca_hardware_monitor/mca_path_control.o
           test -f out/drivers/power/supply/mca/mca_hardware_monitor/mca_bmd.o
-          test -f out/drivers/power/supply/mca/mca_strategy/strategy_wireless/mca_wireless_class_compat.o
-          test -f out/drivers/power/supply/mca/mca_strategy/strategy_wireless/mca_basic_wireless.o
-          test -f out/drivers/power/supply/mca/mca_strategy/strategy_wireless/mca_quick_wireless_baa.o
-          test -f out/drivers/power/supply/mca/mca_strategy/strategy_wireless/mca_wireless_revchg_safe.o
           test -f out/drivers/power/supply/mca/mca_strategy/strategy_jeita/mca_buckchg_jeita.o
-          test -f out/drivers/power/supply/mca/mca_strategy/strategy_quickchg/mca_strategy_quickchg_baa.o
           test -f out/drivers/power/supply/mca/mca_strategy/strategy_pd_auth/mca_pd_auth.o
           test -f out/drivers/power/supply/mca/mca_strategy/strategy_soc_limit/mca_soc_limit.o
+
+          # Stock Dada module filenames expected by modules.dep / userspace.
+          test -f out/drivers/power/supply/mca/mca_common/mca_log.ko
+          test -f out/drivers/power/supply/mca/mca_strategy/strategy_fg/mca_strategy_fg_comp.ko
+          test -f out/drivers/power/supply/mca/mca_strategy/strategy_quickchg/mca_strategy_quickchg.ko
+          test -f out/drivers/power/supply/mca/mca_business/business_battery/mca_business_battery_comp.ko
+          test -f out/drivers/power/supply/mca/mca_business/business_charger/mca_business_charger_comp.ko
+          test -f out/drivers/power/supply/mca/mca_strategy/strategy_wireless/mca_basic_wireless.ko
+          test -f out/drivers/power/supply/mca/mca_strategy/strategy_wireless/mca_quick_wireless.ko
+          test -f out/drivers/power/supply/mca/mca_strategy/strategy_wireless/mca_wireless_revchg.ko
+          test ! -f out/drivers/power/supply/mca/mca_strategy/strategy_wireless/mca_wireless_class_compat.ko
+
           find out/drivers/power/supply/mca -type f \( \
-            -name 'mca_qcom_subpmic_proxy.o' -o \
-            -name 'charger_partition.o' -o \
-            -name 'mca_smart_charge.o' -o \
-            -name 'mca_charge_mievent.o' -o \
-            -name 'mca_charge_interface.o' -o \
-            -name 'mca_qcom_smem.o' -o \
-            -name 'mca_qcom_panel.o' -o \
-            -name 'mca_qcom_sysfs.o' -o \
-            -name 'mca_platform_loadsw_class.o' -o \
-            -name 'mca_platform_wireless_class.o' -o \
+            -name 'mca_log.ko' -o \
+            -name 'mca_strategy_fg_comp.ko' -o \
+            -name 'mca_strategy_quickchg.ko' -o \
+            -name 'mca_business_battery_comp.ko' -o \
+            -name 'mca_business_charger_comp.ko' -o \
+            -name 'mca_basic_wireless.ko' -o \
+            -name 'mca_quick_wireless.ko' -o \
+            -name 'mca_wireless_revchg.ko' -o \
             -name 'nuvolta_1652.o' -o \
             -name 'hl7603.o' -o \
             -name 'mca_vbat_ovp_monitor.o' -o \
             -name 'mca_ibat_ocp_monitor.o' -o \
             -name 'mca_lpd_detect.o' -o \
             -name 'mca_path_control.o' -o \
-            -name 'mca_bmd.o' -o \
-            -name 'mca_wireless_class_compat.o' -o \
-            -name 'mca_basic_wireless.o' -o \
-            -name 'mca_quick_wireless_baa.o' -o \
-            -name 'mca_wireless_revchg_safe.o' -o \
-            -name 'mca_buckchg_jeita.o' -o \
-            -name 'mca_strategy_quickchg_baa.o' -o \
-            -name 'mca_pd_auth.o' -o \
-            -name 'mca_soc_limit.o' \) -print
+            -name 'mca_bmd.o' \) -print
 
       - name: Report compiler diagnostics to draft PR
         if: failure() && (steps.mca_compile.outcome == 'failure' || steps.wireless_compile.outcome == 'failure')
