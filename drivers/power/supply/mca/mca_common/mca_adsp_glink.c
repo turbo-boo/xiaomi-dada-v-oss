@@ -2,9 +2,9 @@
 /*
  * Xiaomi MCA ADSP transport for Dada.
  *
- * The wire ABI follows Xiaomi's public MCA implementation: PMIC-GLINK owner
- * 0x800a for MCA, owner 0x8009 for QBG, type 1 request/response, type 2
- * notification, and property read/write opcodes 1/2.
+ * Stock Dada registers two PMIC-GLINK clients: owner 0x800a for MCA and
+ * owner 0x8009 for QBG. Both share the Xiaomi request/response wire ABI,
+ * callback lists and link-state handling.
  */
 #include <linux/completion.h>
 #include <linux/errno.h>
@@ -62,6 +62,7 @@ struct mca_adsp_ops_node {
 struct mca_adsp_glink_dev {
 	struct device *dev;
 	struct pmic_glink_client *client;
+	struct pmic_glink_client *qbg_client;
 	struct mutex rw_lock;
 	struct completion ack;
 	struct work_struct sync_work;
@@ -76,16 +77,29 @@ static struct mca_adsp_glink_dev *g_mca_adsp_glink;
 static LIST_HEAD(mca_ops_list);
 static LIST_HEAD(qbg_ops_list);
 
+static struct pmic_glink_client *mca_adsp_client_for_owner(
+		struct mca_adsp_glink_dev *mca, u32 owner)
+{
+	if (owner == MCA_ADSP_GLINK_QBG_OWNER)
+		return mca->qbg_client;
+	return mca->client;
+}
+
 static int mca_adsp_glink_xfer(u32 owner, u32 opcode, int prop_id,
 			       void *value, size_t size)
 {
 	struct mca_adsp_glink_dev *mca = g_mca_adsp_glink;
 	struct mca_adsp_glink_req_msg msg = { 0 };
+	struct pmic_glink_client *client;
 	unsigned long timeout;
 	int ret;
 
-	if (!mca || !value || !size || size > MCA_ADSP_PROP_DATA_LEN)
+	if (!mca || !value || !size || size >= MCA_ADSP_PROP_DATA_LEN)
 		return -EINVAL;
+
+	client = mca_adsp_client_for_owner(mca, owner);
+	if (IS_ERR_OR_NULL(client))
+		return -ENODEV;
 
 	mutex_lock(&mca->rw_lock);
 	if (mca->glink_state != PMIC_GLINK_STATE_UP) {
@@ -107,14 +121,15 @@ static int mca_adsp_glink_xfer(u32 owner, u32 opcode, int prop_id,
 	mca->cur_property_id = prop_id;
 	memset(mca->read_buf, 0, sizeof(mca->read_buf));
 
-	ret = pmic_glink_write(mca->client, &msg, sizeof(msg));
+	ret = pmic_glink_write(client, &msg, sizeof(msg));
 	if (ret)
 		goto out_clear;
 
 	timeout = wait_for_completion_timeout(
 		&mca->ack, msecs_to_jiffies(MCA_ADSP_GLINK_TIMEOUT_MS));
 	if (!timeout) {
-		mca_log_err("timeout prop=0x%x opcode=%u\n", prop_id, opcode);
+		mca_log_err("timeout prop=0x%x opcode=%u owner=0x%x\n",
+			    prop_id, opcode, owner);
 		ret = -ETIMEDOUT;
 		goto out_clear;
 	}
@@ -225,8 +240,10 @@ static int mca_adsp_handle_response(struct mca_adsp_glink_dev *mca,
 {
 	if (len < offsetof(struct mca_adsp_glink_resp_msg, data))
 		return -EINVAL;
-	if (msg->seq != mca->seq)
+	if (msg->seq != mca->seq) {
+		mca_log_err("invalid seq_num: %u != %u\n", mca->seq, msg->seq);
 		return 0;
+	}
 
 	mca->retcode = msg->retcode;
 	if (!msg->retcode && msg->hdr.opcode == MCA_ADSP_GLINK_OPCODE_READ)
@@ -287,9 +304,27 @@ static void mca_adsp_glink_state_cb(void *priv, enum pmic_glink_state state)
 	mca_adsp_state_notify(&qbg_ops_list, false);
 }
 
+static int mca_adsp_register_client(struct mca_adsp_glink_dev *mca,
+				    struct platform_device *pdev, u32 owner,
+				    const char *name,
+				    struct pmic_glink_client **client)
+{
+	struct pmic_glink_client_data data = { 0 };
+
+	data.name = name;
+	data.id = owner;
+	data.priv = mca;
+	data.msg_cb = mca_adsp_glink_callback;
+	data.state_cb = mca_adsp_glink_state_cb;
+
+	*client = pmic_glink_register_client(&pdev->dev, &data);
+	if (IS_ERR(*client))
+		return PTR_ERR(*client);
+	return 0;
+}
+
 static int mca_adsp_glink_probe(struct platform_device *pdev)
 {
-	struct pmic_glink_client_data client_data = { 0 };
 	struct mca_adsp_glink_dev *mca;
 	int ret;
 
@@ -299,28 +334,32 @@ static int mca_adsp_glink_probe(struct platform_device *pdev)
 
 	mca->dev = &pdev->dev;
 	mca->cur_property_id = U32_MAX;
-	/* Xiaomi's stock MCA assumes the link is usable after registration. */
 	mca->glink_state = PMIC_GLINK_STATE_UP;
 	mutex_init(&mca->rw_lock);
 	init_completion(&mca->ack);
 	INIT_WORK(&mca->sync_work, mca_adsp_sync_work);
 
-	client_data.name = "mca_adap_glink";
-	client_data.id = MCA_ADSP_GLINK_OWNER;
-	client_data.priv = mca;
-	client_data.msg_cb = mca_adsp_glink_callback;
-	client_data.state_cb = mca_adsp_glink_state_cb;
+	ret = mca_adsp_register_client(mca, pdev, MCA_ADSP_GLINK_OWNER,
+				       "mca_adap_glink", &mca->client);
+	if (ret) {
+		if (ret != -EPROBE_DEFER)
+			mca_log_err("MCA PMIC-GLINK registration failed: %d\n", ret);
+		return ret;
+	}
 
-	mca->client = pmic_glink_register_client(&pdev->dev, &client_data);
-	if (IS_ERR(mca->client)) {
-		ret = PTR_ERR(mca->client);
-		mca_log_err("pmic_glink registration failed: %d\n", ret);
+	ret = mca_adsp_register_client(mca, pdev, MCA_ADSP_GLINK_QBG_OWNER,
+				       "mca_adap_qbg_glink", &mca->qbg_client);
+	if (ret) {
+		if (ret != -EPROBE_DEFER)
+			mca_log_err("QBG PMIC-GLINK registration failed: %d\n", ret);
+		pmic_glink_unregister_client(mca->client);
 		return ret;
 	}
 
 	platform_set_drvdata(pdev, mca);
 	g_mca_adsp_glink = mca;
-	mca_log_info("registered owner 0x%x\n", MCA_ADSP_GLINK_OWNER);
+	mca_log_info("registered MCA/QBG owners 0x%x/0x%x\n",
+		     MCA_ADSP_GLINK_OWNER, MCA_ADSP_GLINK_QBG_OWNER);
 	return 0;
 }
 
@@ -331,6 +370,8 @@ static int mca_adsp_glink_remove(struct platform_device *pdev)
 	if (!mca)
 		return 0;
 	cancel_work_sync(&mca->sync_work);
+	if (!IS_ERR_OR_NULL(mca->qbg_client))
+		pmic_glink_unregister_client(mca->qbg_client);
 	if (!IS_ERR_OR_NULL(mca->client))
 		pmic_glink_unregister_client(mca->client);
 	if (g_mca_adsp_glink == mca)
