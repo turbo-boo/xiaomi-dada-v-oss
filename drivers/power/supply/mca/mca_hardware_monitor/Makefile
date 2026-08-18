@@ -1,1 +1,3 @@
-# MCA hardware-monitor layer is imported in follow-up commits.
+ccflags-y += -I$(srctree)/drivers/misc/hwid
+
+obj-$(CONFIG_XM_POWER_SUPPLY) += mca_vbat_ovp_monitor.o
