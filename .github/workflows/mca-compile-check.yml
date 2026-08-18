@@ -42,6 +42,7 @@ jobs:
             -m MCA_EXTERNAL_FG \
             -m MCA_EXTERNAL_CP \
             -m MCA_EXTERNAL_WIRELESS \
+            -m MCA_EXTERNAL_BOOST \
             -m MCA_QCOM_ADSP \
             -m MCA_QCOM_SUBPMIC \
             -m MCA_QCOM_SMEM \
@@ -49,7 +50,10 @@ jobs:
             -m MCA_QCOM_PANEL \
             -m CHARGER_PARTITION
           make O=out ARCH=arm64 LLVM=1 olddefconfig
-          grep -E 'CONFIG_(MI_HARDWARE_ID|XM_POWER_SUPPLY|MCA_PROTOCOL_PD|MCA_PROTOCOL_QC|MCA_EXTERNAL_FG|MCA_EXTERNAL_CP|MCA_EXTERNAL_WIRELESS|MCA_QCOM_ADSP|MCA_QCOM_SUBPMIC|MCA_QCOM_SMEM|MCA_QCOM_SYSFS|MCA_QCOM_PANEL|CHARGER_PARTITION)=' out/.config
+          grep -E 'CONFIG_(MI_HARDWARE_ID|XM_POWER_SUPPLY|MCA_PROTOCOL_PD|MCA_PROTOCOL_QC|MCA_EXTERNAL_FG|MCA_EXTERNAL_CP|MCA_EXTERNAL_WIRELESS|MCA_EXTERNAL_BOOST|MCA_QCOM_ADSP|MCA_QCOM_SUBPMIC|MCA_QCOM_SMEM|MCA_QCOM_SYSFS|MCA_QCOM_PANEL|CHARGER_PARTITION)=' out/.config
+          echo '--- wireless strategy Kbuild ---'
+          cat drivers/power/supply/mca/mca_strategy/Makefile
+          cat drivers/power/supply/mca/mca_strategy/strategy_wireless/Makefile
 
       - name: Prepare kernel tree
         run: |
@@ -76,6 +80,23 @@ jobs:
           fi
           exit "$status"
 
+      - name: Compile wireless strategy subtree
+        id: wireless_compile
+        shell: bash
+        run: |
+          set +e
+          make -j2 O=out ARCH=arm64 LLVM=1 \
+            KBUILD_MODPOST_WARN=1 \
+            M=drivers/power/supply/mca/mca_strategy/strategy_wireless modules 2>&1 | tee wireless-build.log
+          status=${PIPESTATUS[0]}
+          if [ "$status" -ne 0 ]; then
+            grep -n -m 80 -E '(^|[[:space:]])(error:|fatal error:)|undefined reference|No rule to make target|implicit declaration|incompatible (function|pointer|integer)|undeclared' wireless-build.log >> mca-errors.txt || true
+            if [ ! -s mca-errors.txt ]; then
+              tail -n 200 wireless-build.log > mca-errors.txt
+            fi
+          fi
+          exit "$status"
+
       - name: Assert restored MCA layers were compiled
         if: success()
         run: |
@@ -89,6 +110,7 @@ jobs:
           test -f out/drivers/power/supply/mca/mca_qcom_sysfs/mca_qcom_sysfs.o
           test -f out/drivers/power/supply/mca/mca_platform/mca_platform_wireless_class.o
           test -f out/drivers/power/supply/mca/mca_hardware_ic/wireless_ic/nuvolta_1652/nuvolta_1652.o
+          test -f out/drivers/power/supply/mca/mca_hardware_ic/boost_ic/hl7603/hl7603.o
           test -f out/drivers/power/supply/mca/mca_strategy/strategy_wireless/mca_wireless_class_compat.o
           test -f out/drivers/power/supply/mca/mca_strategy/strategy_wireless/mca_basic_wireless.o
           test -f out/drivers/power/supply/mca/mca_strategy/strategy_wireless/mca_quick_wireless_baa.o
@@ -108,6 +130,7 @@ jobs:
             -name 'mca_qcom_sysfs.o' -o \
             -name 'mca_platform_wireless_class.o' -o \
             -name 'nuvolta_1652.o' -o \
+            -name 'hl7603.o' -o \
             -name 'mca_wireless_class_compat.o' -o \
             -name 'mca_basic_wireless.o' -o \
             -name 'mca_quick_wireless_baa.o' -o \
@@ -118,7 +141,7 @@ jobs:
             -name 'mca_soc_limit.o' \) -print
 
       - name: Report compiler diagnostics to draft PR
-        if: failure() && steps.mca_compile.outcome == 'failure'
+        if: failure() && (steps.mca_compile.outcome == 'failure' || steps.wireless_compile.outcome == 'failure')
         uses: actions/github-script@v7
         with:
           script: |
