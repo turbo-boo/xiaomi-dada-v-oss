@@ -41,6 +41,7 @@ jobs:
             -m MCA_PROTOCOL_QC \
             -m MCA_EXTERNAL_FG \
             -m MCA_EXTERNAL_CP \
+            -m MCA_EXTERNAL_WIRELESS \
             -m MCA_QCOM_ADSP \
             -m MCA_QCOM_SUBPMIC \
             -m MCA_QCOM_SMEM \
@@ -48,7 +49,7 @@ jobs:
             -m MCA_QCOM_PANEL \
             -m CHARGER_PARTITION
           make O=out ARCH=arm64 LLVM=1 olddefconfig
-          grep -E 'CONFIG_(MI_HARDWARE_ID|XM_POWER_SUPPLY|MCA_PROTOCOL_PD|MCA_PROTOCOL_QC|MCA_EXTERNAL_FG|MCA_EXTERNAL_CP|MCA_QCOM_ADSP|MCA_QCOM_SUBPMIC|MCA_QCOM_SMEM|MCA_QCOM_SYSFS|MCA_QCOM_PANEL|CHARGER_PARTITION)=' out/.config
+          grep -E 'CONFIG_(MI_HARDWARE_ID|XM_POWER_SUPPLY|MCA_PROTOCOL_PD|MCA_PROTOCOL_QC|MCA_EXTERNAL_FG|MCA_EXTERNAL_CP|MCA_EXTERNAL_WIRELESS|MCA_QCOM_ADSP|MCA_QCOM_SUBPMIC|MCA_QCOM_SMEM|MCA_QCOM_SYSFS|MCA_QCOM_PANEL|CHARGER_PARTITION)=' out/.config
 
       - name: Prepare kernel tree
         run: |
@@ -86,6 +87,8 @@ jobs:
           test -f out/drivers/power/supply/mca/mca_common/mca_qcom_smem.o
           test -f out/drivers/power/supply/mca/mca_common/mca_qcom_panel.o
           test -f out/drivers/power/supply/mca/mca_qcom_sysfs/mca_qcom_sysfs.o
+          test -f out/drivers/power/supply/mca/mca_platform/mca_platform_wireless_class.o
+          test -f out/drivers/power/supply/mca/mca_hardware_ic/wireless_ic/nuvolta_1652/nuvolta_1652.o
           test -f out/drivers/power/supply/mca/mca_strategy/strategy_jeita/mca_buckchg_jeita.o
           test -f out/drivers/power/supply/mca/mca_strategy/strategy_quickchg/mca_strategy_quickchg_baa.o
           test -f out/drivers/power/supply/mca/mca_strategy/strategy_pd_auth/mca_pd_auth.o
@@ -99,6 +102,8 @@ jobs:
             -name 'mca_qcom_smem.o' -o \
             -name 'mca_qcom_panel.o' -o \
             -name 'mca_qcom_sysfs.o' -o \
+            -name 'mca_platform_wireless_class.o' -o \
+            -name 'nuvolta_1652.o' -o \
             -name 'mca_buckchg_jeita.o' -o \
             -name 'mca_strategy_quickchg_baa.o' -o \
             -name 'mca_pd_auth.o' -o \
