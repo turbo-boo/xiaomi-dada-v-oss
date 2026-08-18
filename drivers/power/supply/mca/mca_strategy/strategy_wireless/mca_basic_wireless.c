@@ -3,15 +3,16 @@
  * Xiaomi MCA basic wireless strategy for Dada bring-up.
  *
  * Keep the stock userspace/status ABI and event plumbing while leaving
- * high-power CP/FCC policy to the quick-wireless strategy.  This layer only
- * tracks attachment/authentication state, applies DT-provided FOD after a
- * successful RX exchange, and exposes the basic wireless controls.
+ * high-power CP/FCC policy to the quick-wireless strategy. This layer tracks
+ * attachment/authentication state, applies DT-provided FOD after a successful
+ * RX exchange, and exposes the basic wireless controls.
  */
 #include <linux/errno.h>
 #include <linux/module.h>
 #include <linux/mutex.h>
 #include <linux/of.h>
 #include <linux/platform_device.h>
+#include <linux/string.h>
 
 #include <mca/common/mca_event.h>
 #include <mca/common/mca_log.h>
@@ -138,7 +139,7 @@ static int dada_basic_wireless_refresh(struct dada_basic_wireless *info,
 		break;
 	}
 
-	/* Authentication/FOD is safe here: it changes RX protection data only. */
+	/* FOD is applied only after the RX reports authentication data. */
 	if (apply_fod && !info->fod_applied && info->auth_value > 0) {
 		ret = platform_class_wireless_set_fod_params(WIRELESS_ROLE_MASTER, 0);
 		if (!ret)
@@ -172,7 +173,6 @@ static int dada_basic_wireless_process(int event, int value, void *data)
 		ret = dada_basic_wireless_refresh(info, true);
 		break;
 	case MCA_EVENT_WIRELESS_MAGNETIC_CASE_INT:
-		/* FOD may differ with a magnetic case; re-apply after next RX IRQ. */
 		info->fod_applied = false;
 		break;
 	default:
@@ -290,15 +290,10 @@ static ssize_t dada_basic_wireless_sysfs_show(struct device *dev,
 					       char *buf)
 {
 	struct dada_basic_wireless *info = dev_get_drvdata(dev);
-	struct mca_sysfs_attr_info *attr_info;
 	int vout = 0, vrect = 0, iout = 0;
 
 	if (!info)
 		return -ENODEV;
-	attr_info = mca_sysfs_lookup_attr(attr->attr.name,
-					  (struct mca_sysfs_attr_info []) {}, 0);
-	/* lookup is performed below against the static table; keep compiler happy */
-	(void)attr_info;
 
 	if (!strcmp(attr->attr.name, "wls_debug")) {
 		(void)platform_class_wireless_get_vout(WIRELESS_ROLE_MASTER, &vout);
@@ -346,7 +341,6 @@ static ssize_t dada_basic_wireless_sysfs_store(struct device *dev,
 		ret = platform_class_wireless_set_rx_offset(WIRELESS_ROLE_MASTER,
 							     value);
 	} else if (!strcmp(attr->attr.name, "wls_debug")) {
-		/* Keep debug writes non-destructive during bring-up. */
 		return count;
 	} else {
 		return -EACCES;
@@ -391,7 +385,7 @@ static int dada_basic_wireless_probe(struct platform_device *pdev)
 	dev_set_drvdata(&pdev->dev, info);
 
 	ret = mca_strategy_ops_register(STRATEGY_FUNC_TYPE_BASIC_WIRELESS,
-					strategy_dada_basic_wireless_process,
+					dada_basic_wireless_process,
 					dada_basic_wireless_get_status, NULL, info);
 	if (ret)
 		return dev_err_probe(&pdev->dev, ret,
