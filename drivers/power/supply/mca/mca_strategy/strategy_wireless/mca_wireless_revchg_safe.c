@@ -7,6 +7,7 @@
 #include <linux/platform_device.h>
 #include <linux/string.h>
 
+#include <mca/common/mca_event.h>
 #include <mca/common/mca_log.h>
 #include <mca/common/mca_sysfs.h>
 #include <mca/platform/platform_wireless_class.h>
@@ -193,13 +194,6 @@ static int dada_rev_get_status(int status, void *value, void *data)
 	return -EOPNOTSUPP;
 }
 
-static int dada_rev_read_int(int (*fn)(unsigned int, int *), int *value)
-{
-	if (!fn || !value)
-		return -EINVAL;
-	return fn(WIRELESS_ROLE_MASTER, value);
-}
-
 static ssize_t dada_rev_show(struct device *dev, struct device_attribute *attr,
 			     char *buf)
 {
@@ -308,6 +302,7 @@ static const struct attribute_group dada_rev_group = { .attrs = dada_rev_attrs }
 static int dada_rev_probe(struct platform_device *pdev)
 {
 	struct dada_rev_wireless *info;
+	u32 rev_boost_default = 0;
 	int ret;
 
 	info = devm_kzalloc(&pdev->dev, sizeof(*info), GFP_KERNEL);
@@ -320,8 +315,9 @@ static int dada_rev_probe(struct platform_device *pdev)
 	dev_set_drvdata(&pdev->dev, info);
 	g_rev = info;
 
-	(void)of_property_read_u32(pdev->dev.of_node, "rev_boost_default",
-				   &info->rev_boost_default);
+	if (!of_property_read_u32(pdev->dev.of_node, "rev_boost_default",
+				  &rev_boost_default))
+		info->rev_boost_default = rev_boost_default;
 
 	ret = mca_strategy_ops_register(STRATEGY_FUNC_TYPE_REV_WIRELESS,
 					dada_rev_process, dada_rev_get_status,
