@@ -42,9 +42,10 @@ jobs:
             -m MCA_EXTERNAL_FG \
             -m MCA_EXTERNAL_CP \
             -m MCA_QCOM_ADSP \
-            -m MCA_QCOM_SUBPMIC
+            -m MCA_QCOM_SUBPMIC \
+            -m CHARGER_PARTITION
           make O=out ARCH=arm64 LLVM=1 olddefconfig
-          grep -E 'CONFIG_(MI_HARDWARE_ID|XM_POWER_SUPPLY|MCA_PROTOCOL_PD|MCA_PROTOCOL_QC|MCA_EXTERNAL_FG|MCA_EXTERNAL_CP|MCA_QCOM_ADSP|MCA_QCOM_SUBPMIC)=' out/.config
+          grep -E 'CONFIG_(MI_HARDWARE_ID|XM_POWER_SUPPLY|MCA_PROTOCOL_PD|MCA_PROTOCOL_QC|MCA_EXTERNAL_FG|MCA_EXTERNAL_CP|MCA_QCOM_ADSP|MCA_QCOM_SUBPMIC|CHARGER_PARTITION)=' out/.config
 
       - name: Prepare kernel tree
         run: |
@@ -65,17 +66,20 @@ jobs:
             KBUILD_MODPOST_WARN=1 \
             M=drivers/power/supply/mca modules 2>&1 | tee mca-build.log
           status=${PIPESTATUS[0]}
-          grep -n -m 24 -E '(^|[[:space:]])(error:|fatal error:)|undefined reference|No rule to make target|implicit declaration|incompatible (function|pointer|integer)|undeclared' mca-build.log > mca-errors.txt || true
+          grep -n -m 32 -E '(^|[[:space:]])(error:|fatal error:)|undefined reference|No rule to make target|implicit declaration|incompatible (function|pointer|integer)|undeclared' mca-build.log > mca-errors.txt || true
           if [ ! -s mca-errors.txt ] && [ "$status" -ne 0 ]; then
-            tail -n 80 mca-build.log > mca-errors.txt
+            tail -n 100 mca-build.log > mca-errors.txt
           fi
           exit "$status"
 
-      - name: Assert Qualcomm sub-PMIC was compiled
+      - name: Assert restored MCA layers were compiled
         if: success()
         run: |
           test -f out/drivers/power/supply/mca/mca_qcom_subpmic_proxy/mca_qcom_subpmic_proxy.o
-          ls -l out/drivers/power/supply/mca/mca_qcom_subpmic_proxy/
+          test -f out/drivers/power/supply/mca/mca_shared_memory/charger_partition.o
+          test -f out/drivers/power/supply/mca/mca_smart_charge/mca_smart_charge.o
+          test -f out/drivers/power/supply/mca/mca_common/mca_charge_mievent.o
+          find out/drivers/power/supply/mca -type f \( -name 'mca_qcom_subpmic_proxy.o' -o -name 'charger_partition.o' -o -name 'mca_smart_charge.o' -o -name 'mca_charge_mievent.o' \) -print
 
       - name: Report compiler diagnostics to draft PR
         if: failure() && steps.mca_compile.outcome == 'failure'
