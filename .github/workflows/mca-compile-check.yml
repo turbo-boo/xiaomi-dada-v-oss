@@ -9,6 +9,7 @@ on:
       - 'drivers/power/supply/mca/**'
       - 'drivers/power/supply/Kconfig'
       - 'drivers/power/supply/Makefile'
+      - 'drivers/misc/hwid/**'
       - '.github/workflows/mca-compile-check.yml'
   workflow_dispatch:
 
@@ -30,6 +31,7 @@ jobs:
           scripts/config --file out/.config \
             -e MODULES \
             -e POWER_SUPPLY \
+            -m MI_HARDWARE_ID \
             -m XM_POWER_SUPPLY \
             -m MCA_PROTOCOL_PD \
             -m MCA_PROTOCOL_QC \
@@ -37,11 +39,15 @@ jobs:
             -m MCA_EXTERNAL_CP \
             -m MCA_QCOM_ADSP
           make O=out ARCH=arm64 LLVM=1 olddefconfig
-          grep -E 'CONFIG_(XM_POWER_SUPPLY|MCA_PROTOCOL_PD|MCA_PROTOCOL_QC|MCA_EXTERNAL_FG|MCA_EXTERNAL_CP|MCA_QCOM_ADSP)=' out/.config
+          grep -E 'CONFIG_(MI_HARDWARE_ID|XM_POWER_SUPPLY|MCA_PROTOCOL_PD|MCA_PROTOCOL_QC|MCA_EXTERNAL_FG|MCA_EXTERNAL_CP|MCA_QCOM_ADSP)=' out/.config
 
       - name: Prepare kernel tree
         run: |
           make -j2 O=out ARCH=arm64 LLVM=1 prepare modules_prepare
+
+      - name: Compile HWID module
+        run: |
+          make -j2 O=out ARCH=arm64 LLVM=1 M=drivers/misc/hwid modules
 
       - name: Compile MCA modules
         run: |
