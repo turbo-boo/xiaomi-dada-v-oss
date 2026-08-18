@@ -1,1 +1,2 @@
-# MCA common core is imported in follow-up commits.
+obj-$(CONFIG_XM_POWER_SUPPLY) += mca_log_compat.o
+obj-$(CONFIG_XM_POWER_SUPPLY) += mca_workqueue.o
