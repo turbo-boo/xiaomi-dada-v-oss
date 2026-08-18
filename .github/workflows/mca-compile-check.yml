@@ -108,9 +108,15 @@ jobs:
           test -f out/drivers/power/supply/mca/mca_common/mca_qcom_smem.o
           test -f out/drivers/power/supply/mca/mca_common/mca_qcom_panel.o
           test -f out/drivers/power/supply/mca/mca_qcom_sysfs/mca_qcom_sysfs.o
+          test -f out/drivers/power/supply/mca/mca_platform/mca_platform_loadsw_class.o
           test -f out/drivers/power/supply/mca/mca_platform/mca_platform_wireless_class.o
           test -f out/drivers/power/supply/mca/mca_hardware_ic/wireless_ic/nuvolta_1652/nuvolta_1652.o
           test -f out/drivers/power/supply/mca/mca_hardware_ic/boost_ic/hl7603/hl7603.o
+          test -f out/drivers/power/supply/mca/mca_hardware_monitor/mca_vbat_ovp_monitor.o
+          test -f out/drivers/power/supply/mca/mca_hardware_monitor/mca_ibat_ocp_monitor.o
+          test -f out/drivers/power/supply/mca/mca_hardware_monitor/mca_lpd_detect.o
+          test -f out/drivers/power/supply/mca/mca_hardware_monitor/mca_path_control.o
+          test -f out/drivers/power/supply/mca/mca_hardware_monitor/mca_bmd.o
           test -f out/drivers/power/supply/mca/mca_strategy/strategy_wireless/mca_wireless_class_compat.o
           test -f out/drivers/power/supply/mca/mca_strategy/strategy_wireless/mca_basic_wireless.o
           test -f out/drivers/power/supply/mca/mca_strategy/strategy_wireless/mca_quick_wireless_baa.o
@@ -128,9 +134,15 @@ jobs:
             -name 'mca_qcom_smem.o' -o \
             -name 'mca_qcom_panel.o' -o \
             -name 'mca_qcom_sysfs.o' -o \
+            -name 'mca_platform_loadsw_class.o' -o \
             -name 'mca_platform_wireless_class.o' -o \
             -name 'nuvolta_1652.o' -o \
             -name 'hl7603.o' -o \
+            -name 'mca_vbat_ovp_monitor.o' -o \
+            -name 'mca_ibat_ocp_monitor.o' -o \
+            -name 'mca_lpd_detect.o' -o \
+            -name 'mca_path_control.o' -o \
+            -name 'mca_bmd.o' -o \
             -name 'mca_wireless_class_compat.o' -o \
             -name 'mca_basic_wireless.o' -o \
             -name 'mca_quick_wireless_baa.o' -o \
