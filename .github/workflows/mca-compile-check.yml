@@ -47,7 +47,9 @@ jobs:
 
       - name: Compile HWID module
         run: |
-          make -j2 O=out ARCH=arm64 LLVM=1 M=drivers/misc/hwid modules
+          make -j2 O=out ARCH=arm64 LLVM=1 \
+            KBUILD_MODPOST_WARN=1 \
+            M=drivers/misc/hwid modules
 
       - name: Compile MCA modules
         run: |
