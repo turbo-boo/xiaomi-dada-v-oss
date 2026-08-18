@@ -44,9 +44,10 @@ jobs:
             -m MCA_QCOM_ADSP \
             -m MCA_QCOM_SUBPMIC \
             -m MCA_QCOM_SMEM \
+            -m MCA_QCOM_SYSFS \
             -m CHARGER_PARTITION
           make O=out ARCH=arm64 LLVM=1 olddefconfig
-          grep -E 'CONFIG_(MI_HARDWARE_ID|XM_POWER_SUPPLY|MCA_PROTOCOL_PD|MCA_PROTOCOL_QC|MCA_EXTERNAL_FG|MCA_EXTERNAL_CP|MCA_QCOM_ADSP|MCA_QCOM_SUBPMIC|MCA_QCOM_SMEM|CHARGER_PARTITION)=' out/.config
+          grep -E 'CONFIG_(MI_HARDWARE_ID|XM_POWER_SUPPLY|MCA_PROTOCOL_PD|MCA_PROTOCOL_QC|MCA_EXTERNAL_FG|MCA_EXTERNAL_CP|MCA_QCOM_ADSP|MCA_QCOM_SUBPMIC|MCA_QCOM_SMEM|MCA_QCOM_SYSFS|CHARGER_PARTITION)=' out/.config
 
       - name: Prepare kernel tree
         run: |
@@ -67,9 +68,9 @@ jobs:
             KBUILD_MODPOST_WARN=1 \
             M=drivers/power/supply/mca modules 2>&1 | tee mca-build.log
           status=${PIPESTATUS[0]}
-          grep -n -m 48 -E '(^|[[:space:]])(error:|fatal error:)|undefined reference|No rule to make target|implicit declaration|incompatible (function|pointer|integer)|undeclared' mca-build.log > mca-errors.txt || true
+          grep -n -m 64 -E '(^|[[:space:]])(error:|fatal error:)|undefined reference|No rule to make target|implicit declaration|incompatible (function|pointer|integer)|undeclared' mca-build.log > mca-errors.txt || true
           if [ ! -s mca-errors.txt ] && [ "$status" -ne 0 ]; then
-            tail -n 140 mca-build.log > mca-errors.txt
+            tail -n 160 mca-build.log > mca-errors.txt
           fi
           exit "$status"
 
@@ -80,7 +81,9 @@ jobs:
           test -f out/drivers/power/supply/mca/mca_shared_memory/charger_partition.o
           test -f out/drivers/power/supply/mca/mca_smart_charge/mca_smart_charge.o
           test -f out/drivers/power/supply/mca/mca_common/mca_charge_mievent.o
+          test -f out/drivers/power/supply/mca/mca_common/mca_charge_interface.o
           test -f out/drivers/power/supply/mca/mca_common/mca_qcom_smem.o
+          test -f out/drivers/power/supply/mca/mca_qcom_sysfs/mca_qcom_sysfs.o
           test -f out/drivers/power/supply/mca/mca_strategy/strategy_jeita/mca_buckchg_jeita.o
           test -f out/drivers/power/supply/mca/mca_strategy/strategy_quickchg/mca_strategy_quickchg_baa.o
           find out/drivers/power/supply/mca -type f \( \
@@ -88,7 +91,9 @@ jobs:
             -name 'charger_partition.o' -o \
             -name 'mca_smart_charge.o' -o \
             -name 'mca_charge_mievent.o' -o \
+            -name 'mca_charge_interface.o' -o \
             -name 'mca_qcom_smem.o' -o \
+            -name 'mca_qcom_sysfs.o' -o \
             -name 'mca_buckchg_jeita.o' -o \
             -name 'mca_strategy_quickchg_baa.o' \) -print
 
