@@ -69,9 +69,9 @@ jobs:
             KBUILD_MODPOST_WARN=1 \
             M=drivers/power/supply/mca modules 2>&1 | tee mca-build.log
           status=${PIPESTATUS[0]}
-          grep -n -m 72 -E '(^|[[:space:]])(error:|fatal error:)|undefined reference|No rule to make target|implicit declaration|incompatible (function|pointer|integer)|undeclared' mca-build.log > mca-errors.txt || true
+          grep -n -m 80 -E '(^|[[:space:]])(error:|fatal error:)|undefined reference|No rule to make target|implicit declaration|incompatible (function|pointer|integer)|undeclared' mca-build.log > mca-errors.txt || true
           if [ ! -s mca-errors.txt ] && [ "$status" -ne 0 ]; then
-            tail -n 180 mca-build.log > mca-errors.txt
+            tail -n 200 mca-build.log > mca-errors.txt
           fi
           exit "$status"
 
@@ -88,6 +88,8 @@ jobs:
           test -f out/drivers/power/supply/mca/mca_qcom_sysfs/mca_qcom_sysfs.o
           test -f out/drivers/power/supply/mca/mca_strategy/strategy_jeita/mca_buckchg_jeita.o
           test -f out/drivers/power/supply/mca/mca_strategy/strategy_quickchg/mca_strategy_quickchg_baa.o
+          test -f out/drivers/power/supply/mca/mca_strategy/strategy_pd_auth/mca_pd_auth.o
+          test -f out/drivers/power/supply/mca/mca_strategy/strategy_soc_limit/mca_soc_limit.o
           find out/drivers/power/supply/mca -type f \( \
             -name 'mca_qcom_subpmic_proxy.o' -o \
             -name 'charger_partition.o' -o \
@@ -98,7 +100,9 @@ jobs:
             -name 'mca_qcom_panel.o' -o \
             -name 'mca_qcom_sysfs.o' -o \
             -name 'mca_buckchg_jeita.o' -o \
-            -name 'mca_strategy_quickchg_baa.o' \) -print
+            -name 'mca_strategy_quickchg_baa.o' -o \
+            -name 'mca_pd_auth.o' -o \
+            -name 'mca_soc_limit.o' \) -print
 
       - name: Report compiler diagnostics to draft PR
         if: failure() && steps.mca_compile.outcome == 'failure'
