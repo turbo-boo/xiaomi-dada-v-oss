@@ -3,4 +3,5 @@ mca_common-objs := mca_voter.o
 
 obj-$(CONFIG_XM_POWER_SUPPLY) += mca_log_compat.o
 obj-$(CONFIG_XM_POWER_SUPPLY) += mca_workqueue.o
+obj-$(CONFIG_XM_POWER_SUPPLY) += mca_parse_dts.o
 obj-$(CONFIG_MCA_QCOM_ADSP) += mca_adsp_glink.o
