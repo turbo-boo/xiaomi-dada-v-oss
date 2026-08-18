@@ -1,1 +1,1 @@
-# MCA Qualcomm sysfs glue is imported in follow-up commits.
+obj-$(CONFIG_MCA_QCOM_SYSFS) += mca_qcom_sysfs.o
