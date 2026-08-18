@@ -61,7 +61,7 @@ static bool dada_source_online(const char *name)
 
 static int dada_battery_get_status(union power_supply_propval *val)
 {
-	int current = 0;
+	int battery_current = 0;
 	int soc;
 	bool online;
 
@@ -76,7 +76,8 @@ static int dada_battery_get_status(union power_supply_propval *val)
 	}
 
 	/* Early bring-up fallback for platforms whose USB psy appears later. */
-	if (!strategy_class_fg_ops_get_current(&current) && current > 0)
+	if (!strategy_class_fg_ops_get_current(&battery_current) &&
+	    battery_current > 0)
 		val->intval = POWER_SUPPLY_STATUS_CHARGING;
 	else
 		val->intval = POWER_SUPPLY_STATUS_DISCHARGING;
