@@ -1,0 +1,49 @@
+name: MCA compile check
+
+on:
+  push:
+    branches:
+      - mca-port-dada
+  pull_request:
+    paths:
+      - 'drivers/power/supply/mca/**'
+      - 'drivers/power/supply/Kconfig'
+      - 'drivers/power/supply/Makefile'
+      - '.github/workflows/mca-compile-check.yml'
+  workflow_dispatch:
+
+jobs:
+  compile-mca:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install kernel build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y clang lld llvm make bc bison flex libssl-dev libelf-dev dwarves
+
+      - name: Configure arm64 kernel for MCA
+        run: |
+          make O=out ARCH=arm64 LLVM=1 defconfig
+          scripts/config --file out/.config \
+            -e MODULES \
+            -e POWER_SUPPLY \
+            -m XM_POWER_SUPPLY \
+            -m MCA_PROTOCOL_PD \
+            -m MCA_EXTERNAL_FG \
+            -m MCA_EXTERNAL_CP \
+            -m MCA_QCOM_ADSP
+          make O=out ARCH=arm64 LLVM=1 olddefconfig
+          grep -E 'CONFIG_(XM_POWER_SUPPLY|MCA_PROTOCOL_PD|MCA_EXTERNAL_FG|MCA_EXTERNAL_CP|MCA_QCOM_ADSP)=' out/.config
+
+      - name: Prepare kernel tree
+        run: |
+          make -j2 O=out ARCH=arm64 LLVM=1 prepare modules_prepare
+
+      - name: Compile MCA modules
+        run: |
+          make -j2 O=out ARCH=arm64 LLVM=1 \
+            KBUILD_MODPOST_WARN=1 \
+            M=drivers/power/supply/mca modules
