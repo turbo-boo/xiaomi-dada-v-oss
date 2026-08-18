@@ -1,4 +1,4 @@
 obj-$(CONFIG_MCA_EXTERNAL_FG) += fuelgauge_ic/
+obj-$(CONFIG_MCA_EXTERNAL_CP) += charge_pump_ic/
 
-# Charge-pump and wireless IC drivers are added after their Dada-specific
-# hardware interfaces have been validated.
+# Wireless IC drivers are restored after wired charging is validated.
