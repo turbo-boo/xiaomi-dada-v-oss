@@ -531,7 +531,7 @@ static int smart_charge_mmap(struct file *filp, struct vm_area_struct *vma)
 	if (ctx->mapped)
 		return -EBUSY;
 
-	vma->vm_flags |= VM_DONTEXPAND | VM_DONTDUMP;
+	vm_flags_set(vma, VM_DONTEXPAND | VM_DONTDUMP);
 	vma->vm_page_prot = pgprot_noncached(vma->vm_page_prot);
 	vma->vm_ops = &smart_charge_vm_ops;
 	vma->vm_private_data = ctx;
