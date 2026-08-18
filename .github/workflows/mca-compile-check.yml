@@ -13,6 +13,10 @@ on:
       - '.github/workflows/mca-compile-check.yml'
   workflow_dispatch:
 
+permissions:
+  contents: read
+  pull-requests: write
+
 jobs:
   compile-mca:
     runs-on: ubuntu-24.04
@@ -52,7 +56,52 @@ jobs:
             M=drivers/misc/hwid modules
 
       - name: Compile MCA modules
+        id: mca_compile
+        shell: bash
         run: |
+          set +e
           make -j2 O=out ARCH=arm64 LLVM=1 \
             KBUILD_MODPOST_WARN=1 \
-            M=drivers/power/supply/mca modules
+            M=drivers/power/supply/mca modules 2>&1 | tee mca-build.log
+          status=${PIPESTATUS[0]}
+          grep -n -m 24 -E '(^|[[:space:]])(error:|fatal error:)|undefined reference|No rule to make target|implicit declaration|incompatible (function|pointer|integer)|undeclared' mca-build.log > mca-errors.txt || true
+          if [ ! -s mca-errors.txt ] && [ "$status" -ne 0 ]; then
+            tail -n 80 mca-build.log > mca-errors.txt
+          fi
+          exit "$status"
+
+      - name: Report compiler diagnostics to draft PR
+        if: failure() && steps.mca_compile.outcome == 'failure'
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const fs = require('fs');
+            let diag = 'Compiler failed without captured diagnostics.';
+            if (fs.existsSync('mca-errors.txt')) {
+              diag = fs.readFileSync('mca-errors.txt', 'utf8').trim();
+            }
+            if (diag.length > 12000) diag = diag.slice(0, 12000);
+            const marker = '<!-- mca-compile-diagnostics -->';
+            const body = `${marker}\nMCA compile diagnostics for \`${context.sha.slice(0, 12)}\`:\n\n\`\`\`text\n${diag}\n\`\`\``;
+            const comments = await github.paginate(github.rest.issues.listComments, {
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: 1,
+              per_page: 100,
+            });
+            const old = comments.find(c => c.user.type === 'Bot' && c.body?.includes(marker));
+            if (old) {
+              await github.rest.issues.updateComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                comment_id: old.id,
+                body,
+              });
+            } else {
+              await github.rest.issues.createComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: 1,
+                body,
+              });
+            }
