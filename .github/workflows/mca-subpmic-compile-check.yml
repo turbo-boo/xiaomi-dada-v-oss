@@ -50,3 +50,8 @@ jobs:
           make -j2 O=out ARCH=arm64 LLVM=1 \
             KBUILD_MODPOST_WARN=1 \
             M=drivers/power/supply/mca modules 2>&1 | tee mca-subpmic-build.log
+
+      - name: Assert Qualcomm sub-PMIC was compiled
+        run: |
+          test -f out/drivers/power/supply/mca/mca_qcom_subpmic_proxy/mca_qcom_subpmic_proxy.o
+          ls -l out/drivers/power/supply/mca/mca_qcom_subpmic_proxy/
