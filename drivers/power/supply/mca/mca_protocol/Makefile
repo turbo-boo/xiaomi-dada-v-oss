@@ -1,4 +1,4 @@
 obj-$(CONFIG_XM_POWER_SUPPLY) += mca_protocol_class.o
+obj-$(CONFIG_MCA_PROTOCOL_PD) += protocol_pd/
 
-# PD/QC protocol implementations are enabled after their Dada transport glue
-# (ADSP/PMIC GLINK) is restored.
+# QC is restored separately after the PD path is build-validated.
