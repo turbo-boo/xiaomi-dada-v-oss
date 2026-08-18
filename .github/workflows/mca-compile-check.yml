@@ -66,9 +66,9 @@ jobs:
             KBUILD_MODPOST_WARN=1 \
             M=drivers/power/supply/mca modules 2>&1 | tee mca-build.log
           status=${PIPESTATUS[0]}
-          grep -n -m 32 -E '(^|[[:space:]])(error:|fatal error:)|undefined reference|No rule to make target|implicit declaration|incompatible (function|pointer|integer)|undeclared' mca-build.log > mca-errors.txt || true
+          grep -n -m 40 -E '(^|[[:space:]])(error:|fatal error:)|undefined reference|No rule to make target|implicit declaration|incompatible (function|pointer|integer)|undeclared' mca-build.log > mca-errors.txt || true
           if [ ! -s mca-errors.txt ] && [ "$status" -ne 0 ]; then
-            tail -n 100 mca-build.log > mca-errors.txt
+            tail -n 120 mca-build.log > mca-errors.txt
           fi
           exit "$status"
 
@@ -79,7 +79,15 @@ jobs:
           test -f out/drivers/power/supply/mca/mca_shared_memory/charger_partition.o
           test -f out/drivers/power/supply/mca/mca_smart_charge/mca_smart_charge.o
           test -f out/drivers/power/supply/mca/mca_common/mca_charge_mievent.o
-          find out/drivers/power/supply/mca -type f \( -name 'mca_qcom_subpmic_proxy.o' -o -name 'charger_partition.o' -o -name 'mca_smart_charge.o' -o -name 'mca_charge_mievent.o' \) -print
+          test -f out/drivers/power/supply/mca/mca_strategy/strategy_jeita/mca_buckchg_jeita.o
+          test -f out/drivers/power/supply/mca/mca_strategy/strategy_quickchg/mca_strategy_quickchg_baa.o
+          find out/drivers/power/supply/mca -type f \( \
+            -name 'mca_qcom_subpmic_proxy.o' -o \
+            -name 'charger_partition.o' -o \
+            -name 'mca_smart_charge.o' -o \
+            -name 'mca_charge_mievent.o' -o \
+            -name 'mca_buckchg_jeita.o' -o \
+            -name 'mca_strategy_quickchg_baa.o' \) -print
 
       - name: Report compiler diagnostics to draft PR
         if: failure() && steps.mca_compile.outcome == 'failure'
