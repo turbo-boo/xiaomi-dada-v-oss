@@ -170,7 +170,9 @@ static int dada_quick_wls_set_delta_fv(void *data, int value)
 
 	if (!info)
 		return -EINVAL;
+	mutex_lock(&info->lock);
 	info->delta_fv = value;
+	mutex_unlock(&info->lock);
 	return 0;
 }
 
@@ -180,7 +182,9 @@ static int dada_quick_wls_set_delta_ichg(void *data, int value)
 
 	if (!info)
 		return -EINVAL;
+	mutex_lock(&info->lock);
 	info->delta_ichg = value;
+	mutex_unlock(&info->lock);
 	return 0;
 }
 
@@ -190,7 +194,9 @@ static int dada_quick_wls_set_fcc(void *data, int value)
 
 	if (!info)
 		return -EINVAL;
+	mutex_lock(&info->lock);
 	info->fcc_limit = value;
+	mutex_unlock(&info->lock);
 	return 0;
 }
 
@@ -200,7 +206,9 @@ static int dada_quick_wls_set_boost(void *data, int enable)
 
 	if (!info)
 		return -EINVAL;
+	mutex_lock(&info->lock);
 	info->pwr_boost = !!enable;
+	mutex_unlock(&info->lock);
 	return 0;
 }
 
@@ -210,7 +218,9 @@ static int dada_quick_wls_set_soc_limit(void *data, int enable)
 
 	if (!info)
 		return -EINVAL;
+	mutex_lock(&info->lock);
 	info->soc_limit = !!enable;
+	mutex_unlock(&info->lock);
 	return 0;
 }
 
