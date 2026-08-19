@@ -6,6 +6,7 @@
 #include <linux/platform_device.h>
 
 #include <mca/common/mca_log.h>
+#include <mca/common/mca_sysfs.h>
 #include <mca/platform/platform_bc12_class.h>
 #include <mca/platform/platform_buckchg_class.h>
 #include <mca/platform/platform_cp_class.h>
@@ -20,6 +21,7 @@
 
 struct mca_qcom_sysfs_dev {
 	struct device *dev;
+	struct device *typec_dev;
 	struct class class;
 	bool class_registered;
 };
@@ -332,6 +334,92 @@ static struct attribute *mca_qcom_sysfs_attrs[] = {
 };
 ATTRIBUTE_GROUPS(mca_qcom_sysfs);
 
+enum dada_typec_attr {
+	DADA_TYPEC_APDO_MAX = 0,
+	DADA_TYPEC_HAS_DP,
+	DADA_TYPEC_CID_STATUS,
+	DADA_TYPEC_OTG_UI_SUPPORT,
+	DADA_TYPEC_CC_TOGGLE,
+};
+
+static ssize_t dada_typec_show(struct device *dev,
+			       struct device_attribute *attr, char *buf);
+static ssize_t dada_typec_store(struct device *dev,
+				struct device_attribute *attr,
+				const char *buf, size_t count);
+
+static struct mca_sysfs_attr_info dada_typec_fields[] = {
+	mca_sysfs_attr_ro(dada_typec, 0440, DADA_TYPEC_APDO_MAX, apdo_max),
+	mca_sysfs_attr_ro(dada_typec, 0440, DADA_TYPEC_HAS_DP, has_dp),
+	mca_sysfs_attr_ro(dada_typec, 0440, DADA_TYPEC_CID_STATUS, cid_status),
+	mca_sysfs_attr_ro(dada_typec, 0440, DADA_TYPEC_OTG_UI_SUPPORT, otg_ui_support),
+	mca_sysfs_attr_rw(dada_typec, 0640, DADA_TYPEC_CC_TOGGLE, cc_toggle),
+};
+#define DADA_TYPEC_ATTR_COUNT ARRAY_SIZE(dada_typec_fields)
+static struct attribute *dada_typec_attrs[DADA_TYPEC_ATTR_COUNT + 1];
+static const struct attribute_group dada_typec_group = { .attrs = dada_typec_attrs };
+
+static ssize_t dada_typec_show(struct device *dev,
+			       struct device_attribute *attr, char *buf)
+{
+	struct mca_sysfs_attr_info *field;
+	unsigned int apdo = 0;
+	bool value = false;
+	int ret = 0;
+
+	field = mca_sysfs_lookup_attr(attr->attr.name, dada_typec_fields,
+				      DADA_TYPEC_ATTR_COUNT);
+	if (!field)
+		return -EINVAL;
+
+	switch (field->sysfs_attr_name) {
+	case DADA_TYPEC_APDO_MAX:
+		ret = protocol_class_pd_get_pps_apdo_max(TYPEC_PORT_0, &apdo);
+		if (ret || !apdo) {
+			apdo = 0;
+			(void)protocol_class_get_adapter_max_power(ADAPTER_PROTOCOL_PPS,
+							     &apdo);
+		}
+		return sysfs_emit(buf, "%u\n", apdo);
+	case DADA_TYPEC_HAS_DP:
+		ret = protocol_class_pd_get_has_dp(TYPEC_PORT_0, &value);
+		break;
+	case DADA_TYPEC_CID_STATUS:
+		ret = protocol_class_pd_get_cid_status(TYPEC_PORT_0, &value);
+		break;
+	case DADA_TYPEC_OTG_UI_SUPPORT:
+		/* Stock Dada protocol_pd_class exposes this capability as 1. */
+		value = true;
+		break;
+	case DADA_TYPEC_CC_TOGGLE:
+		ret = protocol_class_pd_get_cc_toggle(TYPEC_PORT_0, &value);
+		break;
+	default:
+		return -EINVAL;
+	}
+	if (ret)
+		return ret;
+	return sysfs_emit(buf, "%d\n", value);
+}
+
+static ssize_t dada_typec_store(struct device *dev,
+				struct device_attribute *attr,
+				const char *buf, size_t count)
+{
+	struct mca_sysfs_attr_info *field;
+	bool value;
+	int ret;
+
+	field = mca_sysfs_lookup_attr(attr->attr.name, dada_typec_fields,
+				      DADA_TYPEC_ATTR_COUNT);
+	if (!field || field->sysfs_attr_name != DADA_TYPEC_CC_TOGGLE)
+		return -EACCES;
+	if (kstrtobool(buf, &value))
+		return -EINVAL;
+	ret = protocol_class_pd_set_cc_toggle(TYPEC_PORT_0, value);
+	return ret ? ret : count;
+}
+
 static int mca_qcom_sysfs_probe(struct platform_device *pdev)
 {
 	struct mca_qcom_sysfs_dev *info;
@@ -350,7 +438,18 @@ static int mca_qcom_sysfs_probe(struct platform_device *pdev)
 		return dev_err_probe(&pdev->dev, ret,
 				     "failed to register qcom-battery class\n");
 	info->class_registered = true;
-	mca_log_info("wired qcom-battery compatibility class registered\n");
+
+	mca_sysfs_init_attrs(dada_typec_attrs, dada_typec_fields,
+			     DADA_TYPEC_ATTR_COUNT);
+	info->typec_dev = mca_sysfs_create_group("xm_power", SYSFS_DEV_3,
+						 &dada_typec_group);
+	if (!info->typec_dev) {
+		class_unregister(&info->class);
+		info->class_registered = false;
+		return -ENODEV;
+	}
+
+	mca_log_info("qcom-battery and stock Type-C sysfs registered\n");
 	return 0;
 }
 
@@ -358,6 +457,10 @@ static int mca_qcom_sysfs_remove(struct platform_device *pdev)
 {
 	struct mca_qcom_sysfs_dev *info = platform_get_drvdata(pdev);
 
+	if (info && info->typec_dev) {
+		mca_sysfs_remove_group("xm_power", info->typec_dev, &dada_typec_group);
+		info->typec_dev = NULL;
+	}
 	if (info && info->class_registered) {
 		class_unregister(&info->class);
 		info->class_registered = false;
@@ -381,5 +484,5 @@ static struct platform_driver mca_qcom_sysfs_driver = {
 };
 module_platform_driver(mca_qcom_sysfs_driver);
 
-MODULE_DESCRIPTION("Xiaomi Dada wired qcom-battery compatibility sysfs");
+MODULE_DESCRIPTION("Xiaomi Dada qcom-battery and Type-C compatibility sysfs");
 MODULE_LICENSE("GPL v2");
