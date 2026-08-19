@@ -66,19 +66,14 @@ static int dada_charger_get_max_power(unsigned int *power)
 
 	if (!power)
 		return -EINVAL;
-
-	*power = 0;
 	ret = protocol_class_get_adapter_max_power(ADAPTER_PROTOCOL_PPS, power);
 	if (!ret && *power)
 		return 0;
-
-	*power = 0;
 	ret = protocol_class_get_adapter_max_power(ADAPTER_PROTOCOL_PD, power);
 	if (!ret && *power)
 		return 0;
-
 	*power = 0;
-	return protocol_class_get_adapter_max_power(ADAPTER_PROTOCOL_QC, power);
+	return ret;
 }
 
 static ssize_t dada_charger_sysfs_show(struct device *dev,
