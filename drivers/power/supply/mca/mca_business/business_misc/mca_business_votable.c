@@ -1,7 +1,8 @@
 // SPDX-License-Identifier: GPL-2.0
+#include <linux/device.h>
 #include <linux/module.h>
-#include <linux/pm_wakeup.h>
 #include <linux/slab.h>
+#include <linux/pm_wakeup.h>
 #include <mca/common/mca_log.h>
 #include <mca/common/mca_voter.h>
 
