@@ -137,58 +137,68 @@ static int stock_create_voter(struct mca_votable **out, const char *name,
 	return IS_ERR(*out) ? PTR_ERR(*out) : 0;
 }
 
+static int stock_ensure_voter(struct mca_votable **out, const char *name,
+			      int (*cb)(struct mca_votable *, void *, int,
+					const char *))
+{
+	if (mca_find_votable(name)) {
+		/* The owner must retain lifetime control over an existing voter. */
+		*out = NULL;
+		mca_log_info("%s already registered, keeping existing owner\n", name);
+		return 0;
+	}
+
+	return stock_create_voter(out, name, cb);
+}
+
 static int __init stock_buck_voter_compat_init(void)
 {
 	int ret;
 
 	mutex_lock(&g_bridge_lock);
-	/* Do not create duplicates if a later full stock strategy already owns them. */
-	if (mca_find_votable("buck_5v_in") || mca_find_votable("buck_9v_in") ||
-	    mca_find_votable("buck_5v_ich") || mca_find_votable("buck_9v_ich") ||
-	    mca_find_votable("div1_single") || mca_find_votable("div1_multi") ||
-	    mca_find_votable("div2_single") || mca_find_votable("div2_multi") ||
-	    mca_find_votable("div4_single") || mca_find_votable("div4_multi")) {
-		mutex_unlock(&g_bridge_lock);
-		return 0;
-	}
 
-	ret = stock_create_voter(&g_bridge.buck_5v_in, "buck_5v_in",
+	/*
+	 * Create each missing stock voter independently.  Quick-charge compatibility
+	 * may already own the shared div1/div2/div4 names; that must not suppress
+	 * creation of the buck-only 5 V/9 V voters.
+	 */
+	ret = stock_ensure_voter(&g_bridge.buck_5v_in, "buck_5v_in",
 				 stock_buck_5v_in_cb);
 	if (ret)
 		goto out_err;
-	ret = stock_create_voter(&g_bridge.buck_9v_in, "buck_9v_in",
+	ret = stock_ensure_voter(&g_bridge.buck_9v_in, "buck_9v_in",
 				 stock_buck_9v_in_cb);
 	if (ret)
 		goto out_err;
-	ret = stock_create_voter(&g_bridge.buck_5v_ich, "buck_5v_ich",
+	ret = stock_ensure_voter(&g_bridge.buck_5v_ich, "buck_5v_ich",
 				 stock_buck_5v_ich_cb);
 	if (ret)
 		goto out_err;
-	ret = stock_create_voter(&g_bridge.buck_9v_ich, "buck_9v_ich",
+	ret = stock_ensure_voter(&g_bridge.buck_9v_ich, "buck_9v_ich",
 				 stock_buck_9v_ich_cb);
 	if (ret)
 		goto out_err;
-	ret = stock_create_voter(&g_bridge.div1_single, "div1_single",
+	ret = stock_ensure_voter(&g_bridge.div1_single, "div1_single",
 				 stock_cp_state_vote_cb);
 	if (ret)
 		goto out_err;
-	ret = stock_create_voter(&g_bridge.div1_multi, "div1_multi",
+	ret = stock_ensure_voter(&g_bridge.div1_multi, "div1_multi",
 				 stock_cp_state_vote_cb);
 	if (ret)
 		goto out_err;
-	ret = stock_create_voter(&g_bridge.div2_single, "div2_single",
+	ret = stock_ensure_voter(&g_bridge.div2_single, "div2_single",
 				 stock_cp_state_vote_cb);
 	if (ret)
 		goto out_err;
-	ret = stock_create_voter(&g_bridge.div2_multi, "div2_multi",
+	ret = stock_ensure_voter(&g_bridge.div2_multi, "div2_multi",
 				 stock_cp_state_vote_cb);
 	if (ret)
 		goto out_err;
-	ret = stock_create_voter(&g_bridge.div4_single, "div4_single",
+	ret = stock_ensure_voter(&g_bridge.div4_single, "div4_single",
 				 stock_cp_state_vote_cb);
 	if (ret)
 		goto out_err;
-	ret = stock_create_voter(&g_bridge.div4_multi, "div4_multi",
+	ret = stock_ensure_voter(&g_bridge.div4_multi, "div4_multi",
 				 stock_cp_state_vote_cb);
 	if (ret)
 		goto out_err;
