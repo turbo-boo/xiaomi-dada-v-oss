@@ -1,0 +1,46 @@
+# Xiaomi Multi Charge Architecture (MCA)
+# XM_POWER_SUPPLY and CHARGER_PARTITION are declared by the Dada
+# power-supply Kconfig; this file restores the MCA-specific symbols.
+
+if XM_POWER_SUPPLY
+
+config MCA_PROTOCOL_PD
+	tristate "MCA USB Power Delivery protocol support"
+
+config MCA_PROTOCOL_QC
+	tristate "MCA Qualcomm QuickCharge protocol support"
+
+config MCA_EXTERNAL_FG
+	tristate "MCA external fuel gauge IC support"
+
+config MCA_EXTERNAL_CP
+	tristate "MCA external charge pump IC support"
+
+config MCA_EXTERNAL_WIRELESS
+	tristate "MCA external wireless charging IC support"
+
+config MCA_EXTERNAL_LOADSWITCH
+	tristate "MCA external load switch IC support"
+
+config MCA_EXTERNAL_BOOST
+	tristate "MCA external boost IC support"
+
+config MCA_QCOM_SUBPMIC
+	tristate "MCA Qualcomm sub-PMIC proxy support"
+
+config MCA_QCOM_ADSP
+	tristate "MCA Qualcomm ADSP glink support"
+
+config MCA_QCOM_SYSFS
+	tristate "MCA Qualcomm sysfs support"
+
+config MCA_QCOM_SMEM
+	tristate "MCA Qualcomm shared memory support"
+
+config MCA_QCOM_PANEL
+	tristate "MCA Qualcomm panel notifier support"
+
+config MCA_UT_TEST
+	tristate "MCA unit test module"
+
+endif # XM_POWER_SUPPLY
