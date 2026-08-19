@@ -3,8 +3,10 @@
  * Stock MCA buck-voter ABI bridge for the Dada bring-up strategy.
  *
  * The bring-up strategy predates the stock voter names used by Xiaomi's
- * thermal/policy modules.  Keep its aggregation semantics, but expose the
- * stock names and forward the effective vote into the existing Dada voters.
+ * thermal/policy modules. Keep its aggregation semantics, expose the stock
+ * names, and forward buck-mode limits into the existing safe Dada voters.
+ * Charge-pump mode voters are retained as state-only elections until the
+ * complete quick-charge state machine owns the corresponding CP controls.
  */
 #include <linux/errno.h>
 #include <linux/module.h>
@@ -26,6 +28,12 @@ struct stock_buck_vote_bridge {
 	struct mca_votable *buck_9v_in;
 	struct mca_votable *buck_5v_ich;
 	struct mca_votable *buck_9v_ich;
+	struct mca_votable *div1_single;
+	struct mca_votable *div1_multi;
+	struct mca_votable *div2_single;
+	struct mca_votable *div2_multi;
+	struct mca_votable *div4_single;
+	struct mca_votable *div4_multi;
 };
 
 static struct stock_buck_vote_bridge g_bridge;
@@ -88,8 +96,27 @@ static int stock_buck_9v_ich_cb(struct mca_votable *votable, void *data,
 				  stock_buck_is_9v_path(), result);
 }
 
+static int stock_cp_state_vote_cb(struct mca_votable *votable, void *data,
+				  int result, const char *client)
+{
+	/* Preserve CP-mode thermal elections without guessing SC8585 policy. */
+	return 0;
+}
+
 static void stock_buck_destroy_voters(void)
 {
+	if (!IS_ERR_OR_NULL(g_bridge.div4_multi))
+		mca_destroy_votable(g_bridge.div4_multi);
+	if (!IS_ERR_OR_NULL(g_bridge.div4_single))
+		mca_destroy_votable(g_bridge.div4_single);
+	if (!IS_ERR_OR_NULL(g_bridge.div2_multi))
+		mca_destroy_votable(g_bridge.div2_multi);
+	if (!IS_ERR_OR_NULL(g_bridge.div2_single))
+		mca_destroy_votable(g_bridge.div2_single);
+	if (!IS_ERR_OR_NULL(g_bridge.div1_multi))
+		mca_destroy_votable(g_bridge.div1_multi);
+	if (!IS_ERR_OR_NULL(g_bridge.div1_single))
+		mca_destroy_votable(g_bridge.div1_single);
 	if (!IS_ERR_OR_NULL(g_bridge.buck_9v_ich))
 		mca_destroy_votable(g_bridge.buck_9v_ich);
 	if (!IS_ERR_OR_NULL(g_bridge.buck_5v_ich))
@@ -101,49 +128,79 @@ static void stock_buck_destroy_voters(void)
 	memset(&g_bridge, 0, sizeof(g_bridge));
 }
 
+static int stock_create_voter(struct mca_votable **out, const char *name,
+			      int (*cb)(struct mca_votable *, void *, int,
+					const char *))
+{
+	*out = mca_create_votable(name, MCA_VOTE_MIN, cb,
+				  STOCK_BUCK_DEFAULT_LIMIT, NULL);
+	return IS_ERR(*out) ? PTR_ERR(*out) : 0;
+}
+
 static int __init stock_buck_voter_compat_init(void)
 {
-	int ret = -ENOMEM;
+	int ret;
 
 	mutex_lock(&g_bridge_lock);
 	/* Do not create duplicates if a later full stock strategy already owns them. */
 	if (mca_find_votable("buck_5v_in") || mca_find_votable("buck_9v_in") ||
-	    mca_find_votable("buck_5v_ich") || mca_find_votable("buck_9v_ich")) {
+	    mca_find_votable("buck_5v_ich") || mca_find_votable("buck_9v_ich") ||
+	    mca_find_votable("div1_single") || mca_find_votable("div1_multi") ||
+	    mca_find_votable("div2_single") || mca_find_votable("div2_multi") ||
+	    mca_find_votable("div4_single") || mca_find_votable("div4_multi")) {
 		mutex_unlock(&g_bridge_lock);
 		return 0;
 	}
 
-	g_bridge.buck_5v_in = mca_create_votable("buck_5v_in", MCA_VOTE_MIN,
-						 stock_buck_5v_in_cb,
-						 STOCK_BUCK_DEFAULT_LIMIT, NULL);
-	if (IS_ERR(g_bridge.buck_5v_in))
+	ret = stock_create_voter(&g_bridge.buck_5v_in, "buck_5v_in",
+				 stock_buck_5v_in_cb);
+	if (ret)
 		goto out_err;
-	g_bridge.buck_9v_in = mca_create_votable("buck_9v_in", MCA_VOTE_MIN,
-						 stock_buck_9v_in_cb,
-						 STOCK_BUCK_DEFAULT_LIMIT, NULL);
-	if (IS_ERR(g_bridge.buck_9v_in))
+	ret = stock_create_voter(&g_bridge.buck_9v_in, "buck_9v_in",
+				 stock_buck_9v_in_cb);
+	if (ret)
 		goto out_err;
-	g_bridge.buck_5v_ich = mca_create_votable("buck_5v_ich", MCA_VOTE_MIN,
-						  stock_buck_5v_ich_cb,
-						  STOCK_BUCK_DEFAULT_LIMIT, NULL);
-	if (IS_ERR(g_bridge.buck_5v_ich))
+	ret = stock_create_voter(&g_bridge.buck_5v_ich, "buck_5v_ich",
+				 stock_buck_5v_ich_cb);
+	if (ret)
 		goto out_err;
-	g_bridge.buck_9v_ich = mca_create_votable("buck_9v_ich", MCA_VOTE_MIN,
-						  stock_buck_9v_ich_cb,
-						  STOCK_BUCK_DEFAULT_LIMIT, NULL);
-	if (IS_ERR(g_bridge.buck_9v_ich))
+	ret = stock_create_voter(&g_bridge.buck_9v_ich, "buck_9v_ich",
+				 stock_buck_9v_ich_cb);
+	if (ret)
+		goto out_err;
+	ret = stock_create_voter(&g_bridge.div1_single, "div1_single",
+				 stock_cp_state_vote_cb);
+	if (ret)
+		goto out_err;
+	ret = stock_create_voter(&g_bridge.div1_multi, "div1_multi",
+				 stock_cp_state_vote_cb);
+	if (ret)
+		goto out_err;
+	ret = stock_create_voter(&g_bridge.div2_single, "div2_single",
+				 stock_cp_state_vote_cb);
+	if (ret)
+		goto out_err;
+	ret = stock_create_voter(&g_bridge.div2_multi, "div2_multi",
+				 stock_cp_state_vote_cb);
+	if (ret)
+		goto out_err;
+	ret = stock_create_voter(&g_bridge.div4_single, "div4_single",
+				 stock_cp_state_vote_cb);
+	if (ret)
+		goto out_err;
+	ret = stock_create_voter(&g_bridge.div4_multi, "div4_multi",
+				 stock_cp_state_vote_cb);
+	if (ret)
 		goto out_err;
 
-	mca_log_info("stock thermal buck voters registered\n");
+	mca_log_info("complete stock thermal buck voter namespace registered\n");
 	mutex_unlock(&g_bridge_lock);
 	return 0;
 
 out_err:
-	if (!IS_ERR_OR_NULL(g_bridge.buck_5v_in))
-		ret = 0;
 	stock_buck_destroy_voters();
 	mutex_unlock(&g_bridge_lock);
-	return ret ?: -ENOMEM;
+	return ret;
 }
 module_init(stock_buck_voter_compat_init);
 
