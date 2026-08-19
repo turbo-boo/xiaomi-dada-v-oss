@@ -1,25 +1,39 @@
 // SPDX-License-Identifier: GPL-2.0
 /*
- * Dada fuel-gauge strategy bring-up.
+ * Dada single-pack fuel-gauge strategy.
  *
- * Keep the first wired-charging milestone deliberately small: expose the
- * master BQ27Z561 through Xiaomi's strategy_fg ABI.  The original Xiaomi
- * policy adds SOC smoothing, shutdown, authentication, dual-pack and aging
- * logic; those layers can be restored independently without changing the
- * business/power-supply ABI established here.
+ * Keep the active charging policy conservative while exposing the stock Dada
+ * strategy_fg userspace ABI consumed by Xiaomi's micharge service.
  */
 #include <linux/errno.h>
 #include <linux/module.h>
 #include <linux/of.h>
 #include <linux/platform_device.h>
 #include <linux/power_supply.h>
+#include <linux/string.h>
+#include <mca/common/mca_sysfs.h>
 #include <mca/platform/platform_fg_ic_ops.h>
 #include <mca/strategy/strategy_fg_class.h>
 
 struct dada_strategy_fg {
 	struct device *dev;
+	struct device *sysfs_dev;
 	const char *model_name;
 	bool charging_done;
+	int enable_rollback;
+};
+
+enum dada_strategy_fg_sysfs_attr {
+	DADA_FG_ATTR_AUTHENTIC = 0,
+	DADA_FG_ATTR_SLAVE_AUTHENTIC,
+	DADA_FG_ATTR_FAST_CHARGE,
+	DADA_FG_ATTR_SOC_DECIMAL,
+	DADA_FG_ATTR_SOC_DECIMAL_RATE,
+	DADA_FG_ATTR_BATTERY_NUM,
+	DADA_FG_ATTR_ENABLE_ROLLBACK,
+	DADA_FG_ATTR_CALC_RVALUE,
+	DADA_FG_ATTR_MANUFACTURING_DATE,
+	DADA_FG_ATTR_FIRST_USAGE_DATE,
 };
 
 static int dada_fg_is_init_ok(void *data)
@@ -57,10 +71,7 @@ static int dada_fg_get_current(void *data, int *curr)
 
 static int dada_fg_get_voltage(void *data, int *volt)
 {
-	int ret = platform_fg_ops_get_volt(FG_IC_MASTER, volt);
-
-	/* BQ27Z561 reports mV; power_supply consumers expect uV later. */
-	return ret;
+	return platform_fg_ops_get_volt(FG_IC_MASTER, volt);
 }
 
 static int dada_fg_get_cycle(void *data, int *cycle)
@@ -82,7 +93,7 @@ static int dada_fg_get_soc_decimal(void *data, int *decimal, int *rate)
 	if (!ret_decimal && !ret_rate)
 		return 0;
 
-	/* Decimal SOC is cosmetic. Keep integer SOC usable if unsupported. */
+	/* Decimal SOC is display-only; integer SOC remains authoritative. */
 	*decimal = 0;
 	*rate = 0;
 	return 0;
@@ -262,10 +273,183 @@ static struct strategy_fg_class_ops dada_fg_ops = {
 	.strategy_fg_get_temp_offset_flag = dada_fg_get_temp_offset_flag,
 };
 
+static ssize_t dada_strategy_fg_sysfs_show(struct device *dev,
+					   struct device_attribute *attr,
+					   char *buf);
+static ssize_t dada_strategy_fg_sysfs_store(struct device *dev,
+					    struct device_attribute *attr,
+					    const char *buf, size_t count);
+
+static struct mca_sysfs_attr_info dada_strategy_fg_sysfs_fields[] = {
+	mca_sysfs_attr_rw(dada_strategy_fg_sysfs, 0664,
+			  DADA_FG_ATTR_AUTHENTIC, authentic),
+	mca_sysfs_attr_rw(dada_strategy_fg_sysfs, 0664,
+			  DADA_FG_ATTR_SLAVE_AUTHENTIC, slave_authentic),
+	mca_sysfs_attr_ro(dada_strategy_fg_sysfs, 0440,
+			  DADA_FG_ATTR_FAST_CHARGE, fast_charge),
+	mca_sysfs_attr_ro(dada_strategy_fg_sysfs, 0440,
+			  DADA_FG_ATTR_SOC_DECIMAL, soc_decimal),
+	mca_sysfs_attr_ro(dada_strategy_fg_sysfs, 0440,
+			  DADA_FG_ATTR_SOC_DECIMAL_RATE, soc_decimal_rate),
+	mca_sysfs_attr_ro(dada_strategy_fg_sysfs, 0440,
+			  DADA_FG_ATTR_BATTERY_NUM, battery_num),
+	mca_sysfs_attr_rw(dada_strategy_fg_sysfs, 0664,
+			  DADA_FG_ATTR_ENABLE_ROLLBACK, enable_rollback),
+	mca_sysfs_attr_ro(dada_strategy_fg_sysfs, 0440,
+			  DADA_FG_ATTR_CALC_RVALUE, calc_rvalue),
+	mca_sysfs_attr_ro(dada_strategy_fg_sysfs, 0440,
+			  DADA_FG_ATTR_MANUFACTURING_DATE, manufacturing_date),
+	mca_sysfs_attr_rw(dada_strategy_fg_sysfs, 0640,
+			  DADA_FG_ATTR_FIRST_USAGE_DATE, first_usage_date),
+};
+
+#define DADA_FG_SYSFS_ATTR_COUNT ARRAY_SIZE(dada_strategy_fg_sysfs_fields)
+static struct attribute *dada_strategy_fg_sysfs_attrs[DADA_FG_SYSFS_ATTR_COUNT + 1];
+static const struct attribute_group dada_strategy_fg_sysfs_group = {
+	.attrs = dada_strategy_fg_sysfs_attrs,
+};
+
+static struct dada_strategy_fg *dada_strategy_fg_from_attr(
+	struct device *dev, struct device_attribute *attr,
+	struct mca_sysfs_attr_info **field)
+{
+	*field = mca_sysfs_lookup_attr(attr->attr.name,
+				       dada_strategy_fg_sysfs_fields,
+				       DADA_FG_SYSFS_ATTR_COUNT);
+	return *field ? dev_get_drvdata(dev) : NULL;
+}
+
+static ssize_t dada_strategy_fg_show_date(char *buf, bool first_usage)
+{
+	u8 date[16] = { 0 };
+	int ret;
+
+	if (first_usage)
+		ret = platform_fg_ops_get_first_usage_date(FG_IC_MASTER, date);
+	else
+		ret = platform_fg_ops_get_manufacturing_date(FG_IC_MASTER, date);
+	if (ret)
+		return sysfs_emit(buf, "\n");
+	date[sizeof(date) - 1] = '\0';
+	return sysfs_emit(buf, "%s\n", date);
+}
+
+static ssize_t dada_strategy_fg_sysfs_show(struct device *dev,
+					   struct device_attribute *attr,
+					   char *buf)
+{
+	struct mca_sysfs_attr_info *field;
+	struct dada_strategy_fg *fg = dada_strategy_fg_from_attr(dev, attr, &field);
+	unsigned long rvalue;
+	int value = 0, decimal = 0, rate = 0;
+	int ret;
+
+	if (!fg)
+		return -ENODEV;
+
+	switch (field->sysfs_attr_name) {
+	case DADA_FG_ATTR_AUTHENTIC:
+		ret = platform_fg_ops_get_authentic(FG_IC_MASTER, &value);
+		if (ret)
+			value = 0;
+		return sysfs_emit(buf, "%d\n", !!value);
+	case DADA_FG_ATTR_SLAVE_AUTHENTIC:
+		/* Dada is a single-pack design; stock userspace still probes the file. */
+		ret = platform_fg_ops_get_authentic(FG_IC_SLAVE, &value);
+		if (ret)
+			value = 0;
+		return sysfs_emit(buf, "%d\n", !!value);
+	case DADA_FG_ATTR_FAST_CHARGE:
+		ret = platform_fg_ops_get_fastcharge(FG_IC_MASTER, &value);
+		if (ret)
+			value = 0;
+		return sysfs_emit(buf, "%d\n", !!value);
+	case DADA_FG_ATTR_SOC_DECIMAL:
+		dada_fg_get_soc_decimal(fg, &decimal, &rate);
+		return sysfs_emit(buf, "%d\n", decimal);
+	case DADA_FG_ATTR_SOC_DECIMAL_RATE:
+		dada_fg_get_soc_decimal(fg, &decimal, &rate);
+		return sysfs_emit(buf, "%d\n", rate);
+	case DADA_FG_ATTR_BATTERY_NUM:
+		/* Stock strategy returns 0 for a single gauge and 1 for parallel packs. */
+		return sysfs_emit(buf, "0\n");
+	case DADA_FG_ATTR_ENABLE_ROLLBACK:
+		return sysfs_emit(buf, "%d\n", fg->enable_rollback);
+	case DADA_FG_ATTR_CALC_RVALUE:
+		rvalue = platform_fg_ops_get_calc_rvalue(FG_IC_MASTER);
+		return sysfs_emit(buf, "%lu\n", rvalue);
+	case DADA_FG_ATTR_MANUFACTURING_DATE:
+		return dada_strategy_fg_show_date(buf, false);
+	case DADA_FG_ATTR_FIRST_USAGE_DATE:
+		return dada_strategy_fg_show_date(buf, true);
+	default:
+		return -EINVAL;
+	}
+}
+
+static ssize_t dada_strategy_fg_sysfs_store(struct device *dev,
+					    struct device_attribute *attr,
+					    const char *buf, size_t count)
+{
+	struct mca_sysfs_attr_info *field;
+	struct dada_strategy_fg *fg = dada_strategy_fg_from_attr(dev, attr, &field);
+	char date[16];
+	int value;
+	int ret;
+
+	if (!fg)
+		return -ENODEV;
+
+	switch (field->sysfs_attr_name) {
+	case DADA_FG_ATTR_AUTHENTIC:
+		if (kstrtoint(buf, 10, &value))
+			return -EINVAL;
+		ret = platform_fg_ops_set_authentic(FG_IC_MASTER, !!value);
+		return ret ? ret : count;
+	case DADA_FG_ATTR_SLAVE_AUTHENTIC:
+		if (kstrtoint(buf, 10, &value))
+			return -EINVAL;
+		ret = platform_fg_ops_set_authentic(FG_IC_SLAVE, !!value);
+		/* No slave is populated on Dada; preserve the ABI as a harmless write. */
+		return ret == -EOPNOTSUPP || ret == -ENODEV ? count : (ret ? ret : count);
+	case DADA_FG_ATTR_ENABLE_ROLLBACK:
+		if (kstrtoint(buf, 10, &value))
+			return -EINVAL;
+		fg->enable_rollback = !!value;
+		return count;
+	case DADA_FG_ATTR_FIRST_USAGE_DATE:
+		if (!count || count >= sizeof(date))
+			return -EINVAL;
+		memcpy(date, buf, count);
+		date[count] = '\0';
+		strim(date);
+		platform_fg_ops_set_first_usage_date(FG_IC_MASTER, date);
+		return count;
+	default:
+		return -EACCES;
+	}
+}
+
+static int dada_strategy_fg_sysfs_create(struct platform_device *pdev,
+					 struct dada_strategy_fg *fg)
+{
+	int ret;
+
+	mca_sysfs_init_attrs(dada_strategy_fg_sysfs_attrs,
+			     dada_strategy_fg_sysfs_fields,
+			     DADA_FG_SYSFS_ATTR_COUNT);
+	ret = mca_sysfs_create_link_group(SYSFS_DEV_2, "strategy_fg",
+					  &pdev->dev, &dada_strategy_fg_sysfs_group);
+	if (!ret)
+		fg->sysfs_dev = &pdev->dev;
+	return ret;
+}
+
 static int dada_strategy_fg_probe(struct platform_device *pdev)
 {
 	struct dada_strategy_fg *fg;
 	const char *name;
+	int ret;
 
 	fg = devm_kzalloc(&pdev->dev, sizeof(*fg), GFP_KERNEL);
 	if (!fg)
@@ -275,7 +459,25 @@ static int dada_strategy_fg_probe(struct platform_device *pdev)
 	if (!of_property_read_string(pdev->dev.of_node, "model-name", &name))
 		fg->model_name = name;
 	platform_set_drvdata(pdev, fg);
-	return strategy_class_fg_ops_register(fg, &dada_fg_ops);
+
+	ret = strategy_class_fg_ops_register(fg, &dada_fg_ops);
+	if (ret)
+		return ret;
+
+	ret = dada_strategy_fg_sysfs_create(pdev, fg);
+	if (ret)
+		dev_warn(&pdev->dev, "strategy_fg sysfs unavailable: %d\n", ret);
+	return 0;
+}
+
+static int dada_strategy_fg_remove(struct platform_device *pdev)
+{
+	struct dada_strategy_fg *fg = platform_get_drvdata(pdev);
+
+	if (fg && fg->sysfs_dev)
+		mca_sysfs_remove_link_group(SYSFS_DEV_2, "strategy_fg",
+					    &pdev->dev, &dada_strategy_fg_sysfs_group);
+	return 0;
 }
 
 static const struct of_device_id dada_strategy_fg_match[] = {
@@ -291,6 +493,7 @@ static struct platform_driver dada_strategy_fg_driver = {
 		.of_match_table = dada_strategy_fg_match,
 	},
 	.probe = dada_strategy_fg_probe,
+	.remove = dada_strategy_fg_remove,
 };
 module_platform_driver(dada_strategy_fg_driver);
 
