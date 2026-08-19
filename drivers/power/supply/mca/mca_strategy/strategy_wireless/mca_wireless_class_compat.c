@@ -9,6 +9,7 @@
 int strategy_class_wireless_ops_get_adapter_power(
 	struct wls_adapter_power_cap *adapter_power)
 {
+	int max_fcc = 0;
 	int max_power = 0;
 
 	if (!adapter_power)
@@ -17,7 +18,18 @@ int strategy_class_wireless_ops_get_adapter_power(
 					 STRATEGY_STATUS_TYPE_POWER_MAX,
 					 &max_power))
 		return -ENODATA;
-	adapter_power->max_fcc = 0;
+
+	/*
+	 * The quick-wireless layer owns the effective battery-current ceiling.
+	 * Keep this compatibility helper read-only: failure to obtain the quick
+	 * strategy status must not block basic wireless power reporting.
+	 */
+	if (mca_strategy_func_get_status(STRATEGY_FUNC_TYPE_QUICK_WIRELESS,
+					 STRATEGY_STATUS_TYPE_QC_IBAT_MAX,
+					 &max_fcc))
+		max_fcc = 0;
+
+	adapter_power->max_fcc = max_fcc;
 	adapter_power->max_power = max_power;
 	return 0;
 }
