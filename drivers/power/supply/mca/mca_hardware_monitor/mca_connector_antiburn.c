@@ -20,6 +20,7 @@
 
 #include <mca/common/mca_charge_mievent.h>
 #include <mca/common/mca_event.h>
+#include <mca/common/mca_hwid.h>
 #include <mca/common/mca_log.h>
 #include <mca/common/mca_sysfs.h>
 #include <mca/platform/platform_buckchg_class.h>
@@ -76,6 +77,7 @@ struct connector_antiburn {
 	int otg_boost_src;
 	int en_src;
 	int support_elaboration;
+	bool support_base_flip;
 	bool triggered;
 	bool reset_vsafe0v;
 	bool ntc_alarm;
@@ -108,6 +110,30 @@ static int antiburn_read_temp(struct connector_antiburn *conn, int index)
 		return conn->temperature[index] ?: antiburn_default_temp(conn);
 	return conn->support_elaboration ? temp : temp / 1000;
 }
+
+static int antiburn_dump_log_head(void *data, char *buf, int size)
+{
+	return scnprintf(buf, size, "port_temp port_temp1 shell_temp ");
+}
+
+static int antiburn_dump_log_context(void *data, char *buf, int size)
+{
+	struct connector_antiburn *conn = data;
+	int temp1, temp2 = -1;
+
+	if (!conn)
+		return scnprintf(buf, size, "%-10d%-11d%-11d", -1, -1, -1);
+	temp1 = antiburn_read_temp(conn, CONNECTOR_TEMP_1);
+	if (conn->use_double_ntc)
+		temp2 = antiburn_read_temp(conn, CONNECTOR_TEMP_2);
+	return scnprintf(buf, size, "%-10d%-11d%-11d", temp1, temp2,
+			 conn->thermal_board_temp);
+}
+
+static struct mca_log_charge_log_ops antiburn_log_ops = {
+	.dump_log_head = antiburn_dump_log_head,
+	.dump_log_context = antiburn_dump_log_context,
+};
 
 static void antiburn_update_rates(struct connector_antiburn *conn)
 {
@@ -344,7 +370,6 @@ static ssize_t antiburn_sysfs_show(struct device *dev,
 	case CONNECTOR_TEMP_1:
 	case CONNECTOR_TEMP_2:
 		value = antiburn_read_temp(conn, field->sysfs_attr_name);
-		/* Stock Dada returns raw mC in elaboration mode, deci-C otherwise. */
 		if (!conn->support_elaboration)
 			value *= 10;
 		return sysfs_emit(buf, "%d\n", value);
@@ -374,7 +399,6 @@ static ssize_t antiburn_sysfs_store(struct device *dev,
 	switch (field->sysfs_attr_name) {
 	case CONNECTOR_TEMP_1:
 	case CONNECTOR_TEMP_2:
-		/* Exact stock ABI: fake value is stored as userspace value / 10. */
 		conn->fake_temp[field->sysfs_attr_name] = value / 10;
 		cancel_delayed_work_sync(&conn->monitor_work);
 		schedule_delayed_work(&conn->monitor_work, 0);
@@ -447,7 +471,19 @@ static int antiburn_probe(struct platform_device *pdev)
 {
 	struct connector_antiburn *conn;
 	struct device_node *np = pdev->dev.of_node;
+	const struct mca_hwid *hwid = mca_get_hwid_info();
 	int def_scale, ret;
+
+	if (!hwid)
+		return -ENOMEM;
+	/* Exact stock Dada gate: this early hardware revision has no anti-burn. */
+	if (hwid->platform_version == 1 && hwid->major_version == 0 &&
+	    hwid->minor_version == 1) {
+		mca_log_info("anti-burn unsupported on %s P%u.%u\n",
+			     hwid->product_name ?: "unknown", hwid->major_version,
+			     hwid->minor_version);
+		return 0;
+	}
 
 	conn = devm_kzalloc(&pdev->dev, sizeof(*conn), GFP_KERNEL);
 	if (!conn)
@@ -477,6 +513,13 @@ static int antiburn_probe(struct platform_device *pdev)
 	antiburn_read_u32(np, "otg_boost_src", &conn->otg_boost_src,
 			  EXTERNAL_BOOST);
 	antiburn_read_u32(np, "en_src", &conn->en_src, OTG_EN_BOOST);
+	conn->support_base_flip = of_property_read_bool(np, "support-base-flip");
+
+	/* Stock overrides the source on O2 EVT/PVT revisions. */
+	if (hwid->platform_version == 1 &&
+	    (hwid->major_version == 0 ||
+	     (hwid->major_version == 1 && hwid->minor_version == 0)))
+		conn->otg_boost_src = EXTERNAL_BOOST;
 
 	ret = of_property_read_string(np, "thermal-zone-name",
 				      &conn->thermal_zone_name[0]);
@@ -536,6 +579,8 @@ static int antiburn_probe(struct platform_device *pdev)
 	INIT_DELAYED_WORK(&conn->monitor_work, antiburn_monitor_workfn);
 	schedule_delayed_work(&conn->monitor_work,
 			      msecs_to_jiffies(conn->monitor_interval));
+	mca_log_charge_log_register(MCA_CHARGE_LOG_ID_USCP,
+				    &antiburn_log_ops, conn);
 	g_conn = conn;
 	mca_log_info("ready elaboration=%d trigger=%d recharge=%d rate=%d\n",
 		     conn->support_elaboration, conn->trigger_temp,
