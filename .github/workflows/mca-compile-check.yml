@@ -117,9 +117,14 @@ jobs:
           test -f out/drivers/power/supply/mca/mca_hardware_monitor/mca_lpd_detect.o
           test -f out/drivers/power/supply/mca/mca_hardware_monitor/mca_path_control.o
           test -f out/drivers/power/supply/mca/mca_hardware_monitor/mca_bmd.o
+          test -f out/drivers/power/supply/mca/mca_hardware_monitor/mca_connector_antiburn.o
           test -f out/drivers/power/supply/mca/mca_strategy/strategy_jeita/mca_buckchg_jeita.o
           test -f out/drivers/power/supply/mca/mca_strategy/strategy_pd_auth/mca_pd_auth.o
           test -f out/drivers/power/supply/mca/mca_strategy/strategy_soc_limit/mca_soc_limit.o
+          test -f out/drivers/power/supply/mca/mca_strategy/strategy_thermal/mca_charger_thermal.o
+          test -f out/drivers/power/supply/mca/mca_strategy/strategy_buckchg/mca_strategy_buckchg_voter_compat.o
+          test -f out/drivers/power/supply/mca/mca_business/business_misc/mca_business_misc.o
+          test -f out/drivers/power/supply/mca/mca_business/business_misc/mca_business_votable.o
 
           # Stock Dada module filenames expected by modules.dep / userspace.
           test -f out/drivers/power/supply/mca/mca_common/mca_log.ko
@@ -127,6 +132,9 @@ jobs:
           test -f out/drivers/power/supply/mca/mca_strategy/strategy_quickchg/mca_strategy_quickchg.ko
           test -f out/drivers/power/supply/mca/mca_business/business_battery/mca_business_battery_comp.ko
           test -f out/drivers/power/supply/mca/mca_business/business_charger/mca_business_charger_comp.ko
+          test -f out/drivers/power/supply/mca/mca_business/business_misc/mca_business_misc_comp.ko
+          test -f out/drivers/power/supply/mca/mca_strategy/strategy_thermal/mca_charger_thermal.ko
+          test -f out/drivers/power/supply/mca/mca_hardware_monitor/mca_connector_antiburn.ko
           test -f out/drivers/power/supply/mca/mca_strategy/strategy_wireless/mca_basic_wireless.ko
           test -f out/drivers/power/supply/mca/mca_strategy/strategy_wireless/mca_quick_wireless.ko
           test -f out/drivers/power/supply/mca/mca_strategy/strategy_wireless/mca_wireless_revchg.ko
@@ -138,6 +146,9 @@ jobs:
             -name 'mca_strategy_quickchg.ko' -o \
             -name 'mca_business_battery_comp.ko' -o \
             -name 'mca_business_charger_comp.ko' -o \
+            -name 'mca_business_misc_comp.ko' -o \
+            -name 'mca_charger_thermal.ko' -o \
+            -name 'mca_connector_antiburn.ko' -o \
             -name 'mca_basic_wireless.ko' -o \
             -name 'mca_quick_wireless.ko' -o \
             -name 'mca_wireless_revchg.ko' -o \
