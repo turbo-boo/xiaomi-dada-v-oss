@@ -65,7 +65,7 @@ struct mca_log_buf_info {
 	/* Dada stock stores this as seconds; sysfs writes milliseconds. */
 	int time_offset;
 	char *cache[MCA_LOG_CACHE_COUNT];
-	char *current;
+	char *current_buf;
 };
 
 struct mca_charge_log_registration {
@@ -106,18 +106,18 @@ static void mca_log_push(const char *src, size_t len)
 	if (!len)
 		return;
 	spin_lock_irqsave(&g_log_lock, flags);
-	if (!g_log.current) {
-		g_log.current = kzalloc(PAGE_SIZE, GFP_ATOMIC);
-		if (!g_log.current)
+	if (!g_log.current_buf) {
+		g_log.current_buf = kzalloc(PAGE_SIZE, GFP_ATOMIC);
+		if (!g_log.current_buf)
 			goto out_unlock;
 	}
 
 	if (len + g_log.count >= PAGE_SIZE - 1) {
 		kfree(g_log.cache[g_log.latest_cache]);
-		g_log.cache[g_log.latest_cache] = g_log.current;
-		g_log.current = kzalloc(PAGE_SIZE, GFP_ATOMIC);
-		if (!g_log.current) {
-			g_log.current = g_log.cache[g_log.latest_cache];
+		g_log.cache[g_log.latest_cache] = g_log.current_buf;
+		g_log.current_buf = kzalloc(PAGE_SIZE, GFP_ATOMIC);
+		if (!g_log.current_buf) {
+			g_log.current_buf = g_log.cache[g_log.latest_cache];
 			g_log.cache[g_log.latest_cache] = NULL;
 			goto out_unlock;
 		}
@@ -132,9 +132,9 @@ static void mca_log_push(const char *src, size_t len)
 
 	if (len > PAGE_SIZE - 1 - g_log.count)
 		len = PAGE_SIZE - 1 - g_log.count;
-	memcpy(g_log.current + g_log.count, src, len);
+	memcpy(g_log.current_buf + g_log.count, src, len);
 	g_log.count += len;
-	g_log.current[g_log.count] = '\0';
+	g_log.current_buf[g_log.count] = '\0';
 	if (full_num >= MCA_LOG_NOTIFY_THRESHOLD) {
 		full_num = 0;
 		notify = g_log.enable;
@@ -157,9 +157,8 @@ static void mca_log_emit(int level, char tag, const char *format, va_list args)
 	size_t len;
 
 	if (!READ_ONCE(g_log.initialized)) {
-		if (level == MCA_LOG_LEVEL_ERROR) {
+		if (level == MCA_LOG_LEVEL_ERROR)
 			vprintk(format, args);
-		}
 		return;
 	}
 	if (level > READ_ONCE(g_log.log_level))
@@ -291,10 +290,10 @@ static ssize_t mca_log_dump_buffer(char *buf)
 	spin_lock_irqsave(&g_log_lock, flags);
 	index = g_log.index;
 	if (index == MCA_LOG_CACHE_COUNT) {
-		if (g_log.current) {
-			len = strnlen(g_log.current, PAGE_SIZE - 1);
-			memcpy(buf, g_log.current, len);
-			memset(g_log.current, 0, PAGE_SIZE);
+		if (g_log.current_buf) {
+			len = strnlen(g_log.current_buf, PAGE_SIZE - 1);
+			memcpy(buf, g_log.current_buf, len);
+			memset(g_log.current_buf, 0, PAGE_SIZE);
 			g_log.count = 0;
 		}
 		spin_unlock_irqrestore(&g_log_lock, flags);
@@ -421,8 +420,8 @@ static int __init mca_log_init(void)
 {
 	int ret;
 
-	g_log.current = kzalloc(PAGE_SIZE, GFP_KERNEL);
-	if (!g_log.current)
+	g_log.current_buf = kzalloc(PAGE_SIZE, GFP_KERNEL);
+	if (!g_log.current_buf)
 		return -ENOMEM;
 	g_log.max_cache_num = MCA_LOG_CACHE_COUNT;
 	g_log.enable = true;
@@ -430,8 +429,8 @@ static int __init mca_log_init(void)
 	g_log.console_level = MCA_LOG_LEVEL_ERROR;
 	ret = mca_log_sysfs_create();
 	if (ret) {
-		kfree(g_log.current);
-		g_log.current = NULL;
+		kfree(g_log.current_buf);
+		g_log.current_buf = NULL;
 		return ret;
 	}
 	WRITE_ONCE(g_log.initialized, true);
@@ -452,8 +451,8 @@ static void __exit mca_log_exit(void)
 		kfree(g_log.cache[i]);
 		g_log.cache[i] = NULL;
 	}
-	kfree(g_log.current);
-	g_log.current = NULL;
+	kfree(g_log.current_buf);
+	g_log.current_buf = NULL;
 	g_log.count = 0;
 	spin_unlock_irqrestore(&g_log_lock, flags);
 }
