@@ -128,8 +128,7 @@ def main():
     command = ["bash", "tools/bazel", "--batch", "--host_jvm_args=-Xmx1024m",
                "--host_jvm_args=-XX:ActiveProcessorCount=4", "build",
                "//msm-kernel:dada_perf", "--enable_bzlmod=false", "--config=local",
-               "--spawn_strategy=local", "--define=FACTORY_BUILD=0",
-               f"--make_jobs={args.make_jobs}",
+               "--define=FACTORY_BUILD=0", f"--make_jobs={args.make_jobs}",
                "--jobs=4", "--local_resources=cpu=4", "--local_resources=memory=4096"]
     print(f"Workspace checked: {len(lock['projects'])} pinned external projects")
     print("Build command: " + " ".join(command))

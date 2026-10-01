@@ -109,8 +109,10 @@ start from a committed checkout and run::
 The script refuses conflicting existing revisions instead of resetting them.
 ``--verify-only`` checks an already populated workspace. The build uses the
 unmodified Dada perf configuration, normal ``FACTORY_BUILD=0``, a bounded
-job count and local execution. It does not relax modpost errors or update
-KMI symbol allowlists.
+job count and local kernel caching. Auxiliary actions retain Kleaf's standard
+isolation; forcing all actions to run locally can reuse stale extraction
+symlinks and break repeated archive extraction. It does not relax modpost
+errors or update KMI symbol allowlists.
 
 Off-device validation
 ---------------------
@@ -122,6 +124,12 @@ generated, and the Kleaf KMI symbol-list violation check passes. The compiled
 MCA modules pass the same packaging, alias, export and wire-contract checks
 as the generic build. All 199 recorded stock core import CRCs match the
 resulting GKI. No modpost error relaxation or Dada config exclusions are used.
+
+``//msm-kernel:dada_perf_abi`` also builds successfully, including the full
+vendor vmlinux, and generates ``abi-full.stg`` and ``abi.stg``. The public
+Dada rule supplies no ``abi_definition_stg`` baseline. This verifies ABI
+extraction, rather than comparison against a published Dada vendor type
+baseline.
 
 The MCA workflow builds the selected arm64 kernel Image and modules without
 relaxing modpost errors, in addition to compiling the MCA/wireless subtrees.
