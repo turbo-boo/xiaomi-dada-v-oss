@@ -2,8 +2,9 @@
 # SPDX-License-Identifier: GPL-2.0
 """Compare built MCA exports, aliases and wire calls with Dada stock evidence.
 
-This checks names and observed wire arguments. It does not establish symbol
-version CRC, structure layout, kernel KMI or runtime compatibility.
+This checks names and observed wire arguments. Optional GKI CRC comparison
+covers the stock core imports in the fixture, not structure layout, all vendor
+imports or runtime compatibility.
 """
 import argparse
 import json
@@ -14,6 +15,32 @@ import subprocess
 
 def readelf(path, *args):
     return subprocess.check_output(["readelf", *args, str(path)], text=True)
+
+
+def exported_symbols(path):
+    exports = set()
+    for line in readelf(path, "-Ws").splitlines():
+        columns = line.split()
+        # __ksymtab_strings and __ksymtab_gpl are sections, not exports.
+        if (len(columns) == 8 and columns[3] != "SECTION" and
+                columns[7].startswith("__ksymtab_")):
+            exports.add(columns[7][len("__ksymtab_"):])
+    return exports
+
+
+def check_gki_crcs(symvers):
+    fixture = json.loads((Path(__file__).parent / "dada_stock_gki_crc.json").read_text())
+    core = {}
+    for line in symvers.read_text().splitlines():
+        columns = line.split()
+        if len(columns) >= 3 and columns[2] == "vmlinux":
+            core[columns[1]] = int(columns[0], 16)
+    assert core, f"No core GKI exports in {symvers}"
+    for name, crc in fixture["crcs"].items():
+        assert name in core, f"Stock GKI import missing: {name}"
+        assert core[name] == int(crc, 16), (
+            f"Stock GKI CRC mismatch: {name}: {crc} != {core[name]:#010x}")
+    print(f"Verified {len(fixture['crcs'])} stock core GKI import CRCs")
 
 
 def wire_calls(path, objdump):
@@ -78,6 +105,8 @@ def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--kernel-out", required=True, type=Path)
     parser.add_argument("--objdump", default="llvm-objdump")
+    parser.add_argument("--gki-symvers", type=Path,
+                        help="Compare stock core import CRCs with GKI Module.symvers")
     args = parser.parse_args()
     fixture = json.loads((Path(__file__).parent / "dada_stock_contract.json").read_text())
     built = {p.name: p for p in
@@ -86,8 +115,7 @@ def main():
     for row in fixture["modules"]:
         assert row["name"] in built, f"Missing stock module name: {row['name']}"
         path = built[row["name"]]
-        symbols = readelf(path, "-Ws")
-        exports = set(re.findall(r"\b__ksymtab_(\w+)\s*$", symbols, re.M))
+        exports = exported_symbols(path)
         missing = set(row["exports"]) - exports
         assert not missing, f"{row['name']}: missing stock exports {sorted(missing)}"
         aliases = set(re.findall(r"alias=([^\n]+)", readelf(path, "-p", ".modinfo")))
@@ -106,6 +134,8 @@ def main():
             f"{module}:{row['built_function']}: expected {expected}, got {calls}")
     print(f"Verified {len(fixture['modules'])} stock module names, "
           f"{exports_count} exports, aliases and {len(fixture['wire'])} wire contracts")
+    if args.gki_symvers:
+        check_gki_crcs(args.gki_symvers)
 
 
 if __name__ == "__main__":

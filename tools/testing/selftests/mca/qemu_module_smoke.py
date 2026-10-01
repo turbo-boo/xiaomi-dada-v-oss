@@ -42,26 +42,41 @@ def module_order(root):
     return modules, order
 
 
-def initramfs(busybox, modules, order):
+def initramfs(busybox, modules, order, keep_dependencies=False):
+    dependencies = [name for name in order
+                    if "drivers/power/supply/mca" not in modules[name][0].as_posix()]
+    cycle = [name for name in order if name not in dependencies] if keep_dependencies else order
+    if keep_dependencies:
+        for name in dependencies:
+            if modules[name][1] - set(dependencies):
+                raise RuntimeError(f"External dependency {name} requires an MCA module")
     script = """#!/bin/sh
 BB=/bin/busybox
 $BB mount -t proc proc /proc
 $BB mount -t sysfs sysfs /sys
 $BB mount -t devtmpfs devtmpfs /dev
 fail=0
-for round in 1 2; do
-echo "MCA-SMOKE ROUND $round"
 """
-    for name in order:
+    if keep_dependencies:
+        for name in dependencies:
+            script += (f'echo "MCA-SMOKE DEPENDENCY {name}"\n'
+                       f'$BB insmod /modules/{name}.ko || fail=1\n')
+        script += "$BB cut -d ' ' -f1 /proc/modules > /baseline.modules\n"
+    script += 'for round in 1 2; do\necho "MCA-SMOKE ROUND $round"\n'
+    for name in cycle:
         script += (f'echo "MCA-SMOKE LOAD {name}"\n'
                    f'$BB insmod /modules/{name}.ko || fail=1\n')
     script += '[ -d /sys/class/xm_power/mca_event ] || fail=1\n'
-    for name in reversed(order):
+    for name in reversed(cycle):
         script += (f'echo "MCA-SMOKE UNLOAD {name}"\n'
                    f'$BB rmmod {name} || fail=1\n')
-    script += """[ ! -e /sys/class/xm_power ] || fail=1
-[ "$($BB wc -l < /proc/modules)" = 0 ] || fail=1
-done
+    script += '[ ! -e /sys/class/xm_power ] || fail=1\n'
+    if keep_dependencies:
+        script += ("$BB cut -d ' ' -f1 /proc/modules | "
+                   "$BB cmp /baseline.modules - || fail=1\n")
+    else:
+        script += '[ "$($BB wc -l < /proc/modules)" = 0 ] || fail=1\n'
+    script += """done
 if [ "$fail" = 0 ]; then
  echo "MCA-SMOKE PASS: 52 MCA modules, two load/unload cycles"
 else
@@ -97,20 +112,25 @@ $BB poweroff -f
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--kernel-out", type=Path, required=True)
+    parser.add_argument("--image", type=Path,
+                        help="Separate GKI Image when kernel-out contains vendor modules")
     parser.add_argument("--busybox", type=Path, required=True,
                         help="Static AArch64 BusyBox binary")
     parser.add_argument("--qemu", default="qemu-system-aarch64")
     parser.add_argument("--log", type=Path, required=True)
+    parser.add_argument("--keep-dependencies", action="store_true",
+                        help="Keep platform dependencies loaded; cycle all 52 MCA modules")
     args = parser.parse_args()
     root = args.kernel_out.resolve()
+    image = args.image.resolve() if args.image else root / "arch/arm64/boot/Image"
     modules, order = module_order(root)
     with tempfile.TemporaryDirectory(prefix="mca-qemu-") as temp:
         ramdisk = Path(temp) / "initramfs.cpio.gz"
-        ramdisk.write_bytes(initramfs(args.busybox, modules, order))
+        ramdisk.write_bytes(initramfs(args.busybox, modules, order, args.keep_dependencies))
         command = [args.qemu, "-machine", "virt,accel=tcg", "-cpu", "cortex-a57",
                    "-smp", "2", "-m", "1024", "-nographic", "-nodefaults",
                    "-serial", "stdio", "-monitor", "none", "-nic", "none",
-                   "-kernel", str(root / "arch/arm64/boot/Image"),
+                   "-kernel", str(image),
                    "-initrd", str(ramdisk), "-append",
                    "console=ttyAMA0 rdinit=/init panic=-1", "-no-reboot"]
         with args.log.open("w") as log:
@@ -121,6 +141,7 @@ def main():
             or re.search(r"Oops:|BUG:|WARNING:|Unknown symbol|insmod:|rmmod:", output)):
         raise SystemExit(f"QEMU module smoke failed; see {args.log}")
     print(f"Verified two cycles: 52 MCA modules, {len(order)} with dependencies; "
+          f"platform dependencies {'retained' if args.keep_dependencies else 'unloaded'}; "
           "no device probing")
 
 

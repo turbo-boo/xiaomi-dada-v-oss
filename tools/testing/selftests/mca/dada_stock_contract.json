@@ -32,8 +32,7 @@
         "charger_partition_dealloc",
         "charger_partition_get_eu_model",
         "charger_partition_read",
-        "charger_partition_write",
-        "strings"
+        "charger_partition_write"
       ],
       "aliases": []
     },
@@ -56,8 +55,7 @@
       "exports": [
         "mca_adsp_glink_read_prop",
         "mca_adsp_glink_resister_ops",
-        "mca_adsp_glink_write_prop",
-        "strings"
+        "mca_adsp_glink_write_prop"
       ],
       "aliases": []
     },
@@ -71,8 +69,7 @@
         "strategy_class_wireless_ops_get_adapter_charger_mode",
         "strategy_class_wireless_ops_get_adapter_power",
         "strategy_class_wireless_ops_get_wls_type",
-        "strategy_class_wireless_ops_set_parallel_charge",
-        "strings"
+        "strategy_class_wireless_ops_set_parallel_charge"
       ],
       "aliases": []
     },
@@ -122,8 +119,7 @@
       "blob": "4b76fdf771fa4991a9a8e97db9886ab87d9c92f0",
       "sha256": "e5bb8ad8fd8b930e92129e28e63a74263e0c764698de185b72fa3eca387572f0",
       "exports": [
-        "mca_charge_if_ops_register",
-        "strings"
+        "mca_charge_if_ops_register"
       ],
       "aliases": []
     },
@@ -133,10 +129,8 @@
       "blob": "182019874da128ba2f7217dc7f9985c6ae868d26",
       "sha256": "d01a52e7f29d7733548c3788e1cb9788304baf27455728975312d9d01d65056a",
       "exports": [
-        "gpl",
         "mca_charge_mievent_report",
-        "mca_charge_mievent_set_state",
-        "strings"
+        "mca_charge_mievent_set_state"
       ],
       "aliases": []
     },
@@ -147,8 +141,7 @@
       "sha256": "2fd562f1f55a3cb7db1bec2f7053d81bf0e5c1be84560d7c93e9c58fdde25861",
       "exports": [
         "mca_get_wls_charger_thermal_remove",
-        "mca_set_wls_charger_thermal_remove",
-        "strings"
+        "mca_set_wls_charger_thermal_remove"
       ],
       "aliases": []
     },
@@ -175,8 +168,7 @@
         "mca_rerun_election",
         "mca_unlock_votable",
         "mca_vote",
-        "mca_vote_override",
-        "strings"
+        "mca_vote_override"
       ],
       "aliases": []
     },
@@ -186,8 +178,7 @@
       "blob": "ceabc898d0df10049cbe6ea425548710a96b3758",
       "sha256": "6fa53319f7380276035d35520fcbbca13d5b088e3e1ae2da61eff6df626a50cf",
       "exports": [
-        "connector_antiburn_is_triggered",
-        "strings"
+        "connector_antiburn_is_triggered"
       ],
       "aliases": []
     },
@@ -200,8 +191,7 @@
         "mca_event_block_notify",
         "mca_event_block_notify_register",
         "mca_event_block_notify_unregister",
-        "mca_event_report_uevent",
-        "strings"
+        "mca_event_report_uevent"
       ],
       "aliases": []
     },
@@ -211,8 +201,7 @@
       "blob": "a3a6f34bfaafc9ce3d13223f3a3c3e80d7b1c7f6",
       "sha256": "9bff739646a8c966f9d9d388a492c4d269b9236dfcdc5c938a64bcccd34344b2",
       "exports": [
-        "mca_get_hwid_info",
-        "strings"
+        "mca_get_hwid_info"
       ],
       "aliases": []
     },
@@ -226,8 +215,7 @@
         "__mca_log_err",
         "__mca_log_info",
         "mca_log_charge_log_register",
-        "mca_log_get_charge_boot_mode",
-        "strings"
+        "mca_log_get_charge_boot_mode"
       ],
       "aliases": []
     },
@@ -237,8 +225,7 @@
       "blob": "fec1c577f63f6db64898b6ded8e4b97ae699532e",
       "sha256": "1d08ee076bd21d62692fc3a3a6e3f946a549a8b452bfc2d1743df6e8f68e30d6",
       "exports": [
-        "lpd_is_charging_limit",
-        "strings"
+        "lpd_is_charging_limit"
       ],
       "aliases": []
     },
@@ -258,8 +245,7 @@
         "mca_parse_dts_u32_index",
         "mca_parse_dts_u8",
         "mca_parse_dts_u8_array",
-        "mca_parse_dts_u8_count",
-        "strings"
+        "mca_parse_dts_u8_count"
       ],
       "aliases": []
     },
@@ -269,8 +255,7 @@
       "blob": "394e405e57b717ea876ee9e0de2ec8ba167b4441",
       "sha256": "7cd223830646922963b0ad707388d075a535d56f6874ccbc6e39a8e535939f2d",
       "exports": [
-        "mca_path_control_enable_gate",
-        "strings"
+        "mca_path_control_enable_gate"
       ],
       "aliases": []
     },
@@ -296,8 +281,7 @@
       "blob": "0970f9be57b56dd3d9cfa676af514a88ebe6b03c",
       "sha256": "d9d630fa0e4d7e058c25930a1c6910d53c245fa27fc84bf57eebc7e8df39f6bb",
       "exports": [
-        "platform_bc12_class_ops_register",
-        "strings"
+        "platform_bc12_class_ops_register"
       ],
       "aliases": []
     },
@@ -384,8 +368,7 @@
         "platform_class_buckchg_ops_set_wls_hiz",
         "platform_class_buckchg_ops_set_wls_input_curr_lmt",
         "platform_class_buckchg_ops_set_wls_vdd_flag",
-        "platform_class_buckchg_ops_usb_adapter_allow_override",
-        "strings"
+        "platform_class_buckchg_ops_usb_adapter_allow_override"
       ],
       "aliases": []
     },
@@ -434,8 +417,7 @@
         "platform_class_cp_set_default_fsw",
         "platform_class_cp_set_fsw",
         "platform_class_cp_set_mode",
-        "platform_class_cp_set_present",
-        "strings"
+        "platform_class_cp_set_present"
       ],
       "aliases": []
     },
@@ -493,8 +475,7 @@
         "platform_fg_ops_set_iterm",
         "platform_fg_ops_set_temp",
         "platform_fg_ops_set_verify_digest",
-        "platform_fg_ops_update_fw",
-        "strings"
+        "platform_fg_ops_update_fw"
       ],
       "aliases": []
     },
@@ -560,8 +541,7 @@
         "platform_class_wireless_set_rx_offset",
         "platform_class_wireless_set_rx_sleep_mode",
         "platform_class_wireless_set_tx_fan_speed",
-        "platform_class_wireless_set_vout",
-        "strings"
+        "platform_class_wireless_set_vout"
       ],
       "aliases": []
     },
@@ -582,8 +562,7 @@
         "protocol_class_get_adapter_volt_and_curr",
         "protocol_class_register_ops",
         "protocol_class_set_adapter_verified",
-        "protocol_class_set_adapter_volt_and_curr",
-        "strings"
+        "protocol_class_set_adapter_volt_and_curr"
       ],
       "aliases": []
     },
@@ -642,8 +621,7 @@
         "protocol_class_pd_set_typec_cc_orientation",
         "protocol_class_pd_set_typec_mode",
         "protocol_class_pd_set_usb_suspend_supported",
-        "protocol_class_pd_set_verify_process",
-        "strings"
+        "protocol_class_pd_set_verify_process"
       ],
       "aliases": []
     },
@@ -657,8 +635,7 @@
         "protocol_class_qc_get_qc_type",
         "protocol_class_qc_register_ops",
         "protocol_class_qc_set_volt",
-        "protocol_class_qc_set_volt_cmd",
-        "strings"
+        "protocol_class_qc_set_volt_cmd"
       ],
       "aliases": []
     },
@@ -669,8 +646,7 @@
       "sha256": "12d47b9f33dbd89f4101f47cde881966a57bb507a0a93c9f893aa78652f7293c",
       "exports": [
         "mca_panel_get_hbm_state",
-        "mca_panel_get_screen_state",
-        "strings"
+        "mca_panel_get_screen_state"
       ],
       "aliases": []
     },
@@ -680,8 +656,7 @@
       "blob": "b29e88843c35bee8769cea6392ec0cb75c273d20",
       "sha256": "b9d8f93864f0ba2a2fef6db2426b1edd2b95aadd8959b784cbe34e15c80d833e",
       "exports": [
-        "get_smem_battery_info",
-        "strings"
+        "get_smem_battery_info"
       ],
       "aliases": []
     },
@@ -695,7 +670,6 @@
         "pen_charge_state_notifier_unregister_client",
         "qti_battery_charger_get_prop",
         "register_hboost_event_notifier",
-        "strings",
         "unregister_hboost_event_notifier"
       ],
       "aliases": []
@@ -728,8 +702,7 @@
         "mca_smartchg_if_ops_register",
         "mca_smartchg_is_extreme_cold_enabled",
         "mca_smartchg_set_board_temp",
-        "mca_smartchg_set_scene",
-        "strings"
+        "mca_smartchg_set_scene"
       ],
       "aliases": []
     },
@@ -739,8 +712,7 @@
       "blob": "5ef7bb0c2f3713699d3898b118f1027c4ec19d4b",
       "sha256": "aa7512d1ff44b904bb85d899fc56e635dcea559a7e1083948524591c87fc3d82",
       "exports": [
-        "soc_limit_process",
-        "strings"
+        "soc_limit_process"
       ],
       "aliases": []
     },
@@ -761,8 +733,7 @@
         "mca_strategy_func_get_status",
         "mca_strategy_func_process",
         "mca_strategy_func_set_config",
-        "mca_strategy_ops_register",
-        "strings"
+        "mca_strategy_ops_register"
       ],
       "aliases": []
     },
@@ -792,8 +763,7 @@
         "strategy_class_fg_ops_is_init_ok",
         "strategy_class_fg_ops_register",
         "strategy_class_fg_ops_set_charging_done",
-        "strategy_class_fg_set_fastcharge",
-        "strings"
+        "strategy_class_fg_set_fastcharge"
       ],
       "aliases": []
     },
@@ -826,8 +796,7 @@
         "mca_sysfs_init_attrs",
         "mca_sysfs_lookup_attr",
         "mca_sysfs_remove_group",
-        "mca_sysfs_remove_link_group",
-        "strings"
+        "mca_sysfs_remove_link_group"
       ],
       "aliases": []
     },
@@ -857,8 +826,7 @@
         "mca_wireless_rev_set_usb_plugin",
         "mca_wireless_rev_set_user_reverse_chg",
         "mca_wireless_rev_set_wired_chg_ok",
-        "mca_wireless_rev_update_fw_version",
-        "strings"
+        "mca_wireless_rev_update_fw_version"
       ],
       "aliases": []
     },
@@ -872,8 +840,7 @@
         "mca_cancel_work",
         "mca_mod_delayed_work",
         "mca_queue_delayed_work",
-        "mca_queue_work",
-        "strings"
+        "mca_queue_work"
       ],
       "aliases": []
     },

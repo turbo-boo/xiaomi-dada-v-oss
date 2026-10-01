@@ -23,7 +23,7 @@ References
   The Android 15 CN OS2.0.101.0 branch resolves to
   1125d12771fff547cad324aa7cd3961cd9156489. All 50 stock MCA modules from
   vendor_boot/ramdisk/lib/modules were downloaded and checked against their
-  Git blob IDs. Their names, 452 exports, OF aliases, firmware hashes and
+  Git blob IDs. Their names, 419 exports, OF aliases, firmware hashes and
   selected wire calls are recorded in dada_stock_contract.json. The dump's
   vermagic is 6.6.30-android15-8-g48bbe4889b2a-dirty-4k with modversions.
 
@@ -83,8 +83,45 @@ transport when CONFIG_MIEV is enabled. A build with that transport disabled
 does not establish telemetry delivery. ADSP firmware and the Android charging
 HAL are external runtime dependencies.
 
+Public Kleaf workspace
+----------------------
+
+``tools/mca/setup_dada_kleaf.py`` assembles a separate workspace from the
+committed source checkout and 41 public MiCode/AOSP projects. Every external
+commit is pinned in ``tools/mca/dada_kleaf_sources.json``. It uses MiCode's
+Onyx ``kernel_build`` release, the official Dada DT/display/camera/touch/WLAN
+releases and AOSP ``common`` tag ``android15-6.6-2024-07_r59``. The GKI has
+Linux 6.6.30, KMI generation 8, Clang r510928 and Rust 1.73.0b, matching the
+Dada build constants. Its modular KUnit configuration matches Dada; the
+initial July r1 tag instead builds KUnit into vmlinux and cannot be combined
+with the unchanged Dada KUnit module configuration.
+
+The legacy ``include/linux/mca`` symlink points to the restored in-tree
+headers. This also fixes the existing charger-ulog GLINK and DWC3 consumers,
+which otherwise reference the omitted external proprietary MCA directory.
+
+On Linux x86_64 with Git, Python 3.9 or newer and kernel host dependencies,
+start from a committed checkout and run::
+
+  python3 tools/mca/setup_dada_kleaf.py \
+    --workspace ../dada-kernel-workspace --build
+
+The script refuses conflicting existing revisions instead of resetting them.
+``--verify-only`` checks an already populated workspace. The build uses the
+unmodified Dada perf configuration, normal ``FACTORY_BUILD=0``, a bounded
+job count and local execution. It does not relax modpost errors or update
+KMI symbol allowlists.
+
 Off-device validation
 ---------------------
+
+The public Kleaf ``//msm-kernel:dada_perf`` target builds successfully with
+the pinned workspace. Both GKI and vendor modules enable CFI and modversions.
+All 52 packaged MCA modules, eight base DTBs and the Dada overlay DTBO are
+generated, and the Kleaf KMI symbol-list violation check passes. The compiled
+MCA modules pass the same packaging, alias, export and wire-contract checks
+as the generic build. All 199 recorded stock core import CRCs match the
+resulting GKI. No modpost error relaxation or Dada config exclusions are used.
 
 The MCA workflow builds the selected arm64 kernel Image and modules without
 relaxing modpost errors, in addition to compiling the MCA/wireless subtrees.
@@ -93,12 +130,8 @@ PHY, QCOM_IOMMU_UTIL and Android vendor hooks/OEM data. It excludes the
 obsolete Q6V5_MSS remoteproc driver
 (which has duplicate reg_info definitions in this public tree) and the
 legacy Qualcomm interconnect drivers (their upstream node layout conflicts
-with the vendor-modified interconnect headers), and CoreSight USB (its QDSS
-header is outside this release). This generic verification configuration
-is not a device boot image or
-a substitute for the vendor Kleaf/GKI ABI build.
-This standalone checkout lacks ``build/kernel/kleaf`` and ``tools/bazel``;
-the complete Android/vendor build workspace is required for those targets.
+with the vendor-modified interconnect headers), and CoreSight USB. This
+generic verification configuration is not a device boot image.
 
 JEITA tests cover 68 checks against the official CN/Global tables. BASP tests
 cover 20,207 checks with address/undefined-behavior sanitizers, including
@@ -106,11 +139,16 @@ unaligned input, truncation, duplicate/invalid rows and deterministic malformed
 packets. verify_dada_port.py checks the 52 packaged MCA module paths and the
 recorded official Dada DT bindings, then checks the compiled OF aliases and
 presence of the full kernel Module.symvers and an acyclic MCA dependency graph.
-verify_stock_contract.py checks all 50 stock module names, 452 public exports,
+verify_stock_contract.py checks all 50 stock module names, 419 public exports,
 stock aliases and 90 selected ADSP wire calls in the compiled modules against
 independently recorded stock evidence. Unknown/dynamic VDM arguments are not
-claimed as constant wire-call evidence. These checks do not establish symbol
-version CRCs, structure layout compatibility or a production GKI ABI result.
+claimed as constant wire-call evidence. The optional ``--gki-symvers`` check
+compares 199 core import CRCs extracted
+from the stock modules with GKI ``Module.symvers``. The fixture records the
+stock provenance and the matching public GKI used to select those core
+imports. ELF section symbols such as ``__ksymtab_strings`` and
+``__ksymtab_gpl`` are excluded from the export count. This comparison does
+not establish every vendor/MCA ABI, structure layout or runtime behavior.
 
 The optional QEMU smoke test boots the generic arm64 Image on ``virt`` and
 loads all 52 MCA modules with their dependency closure. It checks two complete
@@ -122,6 +160,23 @@ It requires QEMU and a static AArch64 BusyBox binary::
   python3 tools/testing/selftests/mca/qemu_module_smoke.py \
     --kernel-out /path/to/kernel-out --busybox /path/to/arm64-busybox \
     --log /path/to/mca-qemu.log
+
+The Kleaf-built GKI Image and Dada modules also pass two MCA load/unload
+cycles with CFI and modversions enabled: 52 MCA modules and 22 platform
+dependencies, with no warning/oops and no residual MCA modules or ``xm_power``
+class. For this configuration, use ``--keep-dependencies``: Qualcomm platform
+modules such as ``debug_symbol`` have no unload path, and others retain
+platform resources. Dependencies are loaded once before the cycles; after
+each cycle the module list must match that baseline exactly. The generic
+smoke retains its stricter complete-dependency-unload and empty-list checks.
+Neither mode probes physical MCA hardware. The separate GKI Image can be
+supplied with ``--image`` while ``--kernel-out`` names the complete vendor
+make output directory containing ``modules.order``. For example::
+
+  python3 tools/testing/selftests/mca/qemu_module_smoke.py \
+    --kernel-out /path/to/vendor-out --image /path/to/GKI/Image \
+    --keep-dependencies --busybox /path/to/arm64-busybox \
+    --log /path/to/mca-dada-qemu.log
 
 Device probing, charging/thermal/SOC accuracy, reconnect behavior, suspend and
 shutdown, wireless power/FOD/reverse behavior and firmware compatibility still
