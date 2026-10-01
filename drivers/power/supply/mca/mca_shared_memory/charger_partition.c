@@ -7,6 +7,7 @@
  * stock exported ABI, UFS/SCSI access pattern and xm_power sysfs interface,
  * while avoiding the vendor driver's bring-up/debug writes during probe.
  */
+#include <mca/common/mca_workqueue.h>
 #include <linux/blkdev.h>
 #include <linux/delay.h>
 #include <linux/err.h>
@@ -635,6 +636,9 @@ static void charger_publish_existing_flags(void)
 
 static void charger_partition_discover(struct work_struct *work)
 {
+	struct mca_work_callback mca_work_state;
+	CLASS(mca_work_callback, work_scope)(&mca_work_state, work);
+
 	const struct mca_hwid *hwid = mca_get_hwid_info();
 	charger_partition_info_2 info2 = { 0 };
 	static int retry;

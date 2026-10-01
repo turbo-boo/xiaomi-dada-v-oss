@@ -7,6 +7,7 @@
  * the legacy path keeps Xiaomi's older degree-C semantics.  The distinction is
  * verified against Dada's stock mca_connector_antiburn.ko.
  */
+#include <mca/common/mca_workqueue.h>
 #include <linux/delay.h>
 #include <linux/errno.h>
 #include <linux/gpio.h>
@@ -312,6 +313,9 @@ static void antiburn_check_status(struct connector_antiburn *conn)
 
 static void antiburn_monitor_workfn(struct work_struct *work)
 {
+	struct mca_work_callback mca_work_state;
+	CLASS(mca_work_callback, work_scope)(&mca_work_state, work);
+
 	struct connector_antiburn *conn = container_of(
 		work, struct connector_antiburn, monitor_work.work);
 	int i;

@@ -305,6 +305,9 @@ static int dada_jeita_update(struct dada_jeita_data *info)
 
 static void dada_jeita_monitor(struct work_struct *work)
 {
+	struct mca_work_callback mca_work_state;
+	CLASS(mca_work_callback, work_scope)(&mca_work_state, work);
+
 	struct dada_jeita_data *info = container_of(to_delayed_work(work),
 						 struct dada_jeita_data, monitor_work);
 	int wired, wireless, ret = 0;

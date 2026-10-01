@@ -17,6 +17,7 @@
  *
  */
 
+#include <mca/common/mca_workqueue.h>
 #include <linux/i2c.h>
 #include <linux/kernel.h>
 #include <linux/interrupt.h>
@@ -2776,6 +2777,9 @@ static int nuvolta_1652_config_rtx_int_flag(u16 int_flag)
 
 static void nuvolta_1652_init_detect_work(struct work_struct *work)
 {
+	struct mca_work_callback mca_work_state;
+	CLASS(mca_work_callback, work_scope)(&mca_work_state, work);
+
 	struct nuvolta_1652_chg *chip = container_of(
 		work, struct nuvolta_1652_chg, init_detect_work.work);
 	if (READ_ONCE(chip->stopping))
@@ -2796,6 +2800,9 @@ static void nuvolta_1652_init_detect_work(struct work_struct *work)
 
 static void nuvolta_1652_pg_det_work(struct work_struct *work)
 {
+	struct mca_work_callback mca_work_state;
+	CLASS(mca_work_callback, work_scope)(&mca_work_state, work);
+
 	struct nuvolta_1652_chg *chip = container_of(
 		work, struct nuvolta_1652_chg, pg_detect_work.work);
 	if (READ_ONCE(chip->stopping))
@@ -2839,6 +2846,9 @@ static irqreturn_t nuvolta_1652_power_good_handler(int irq, void *dev_id)
 
 static void nuvolta_1652_interrupt_work(struct work_struct *work)
 {
+	struct mca_work_callback mca_work_state;
+	CLASS(mca_work_callback, work_scope)(&mca_work_state, work);
+
 	struct nuvolta_1652_chg *chip = container_of(
 		work, struct nuvolta_1652_chg, interrupt_work.work);
 	if (READ_ONCE(chip->stopping))
@@ -2894,6 +2904,9 @@ static irqreturn_t nuvolta_1652_interrupt_handler(int irq, void *dev_id)
 
 static void nuvolta_1652_hall_interrupt_work(struct work_struct *work)
 {
+	struct mca_work_callback mca_work_state;
+	CLASS(mca_work_callback, work_scope)(&mca_work_state, work);
+
 	struct nuvolta_1652_chg *chip = container_of(
 		work, struct nuvolta_1652_chg, hall_interrupt_work.work);
 	if (READ_ONCE(chip->stopping))

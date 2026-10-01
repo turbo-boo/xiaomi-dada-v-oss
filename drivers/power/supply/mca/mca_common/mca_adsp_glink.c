@@ -6,6 +6,7 @@
  * owner 0x8009 for QBG. Both share the Xiaomi request/response wire ABI,
  * callback lists and link-state handling.
  */
+#include <mca/common/mca_workqueue.h>
 #include <linux/rculist.h>
 #include <mca/common/mca_callback.h>
 
@@ -324,6 +325,9 @@ static void mca_adsp_state_notify(struct list_head *head, bool up)
 
 static void mca_adsp_sync_work(struct work_struct *work)
 {
+	struct mca_work_callback mca_work_state;
+	CLASS(mca_work_callback, work_scope)(&mca_work_state, work);
+
 	mca_adsp_state_notify(&mca_ops_list, true);
 	mca_adsp_state_notify(&qbg_ops_list, true);
 }

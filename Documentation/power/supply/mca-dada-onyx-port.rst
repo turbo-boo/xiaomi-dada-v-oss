@@ -50,6 +50,8 @@ shutdown, work draining and diagnostic removal replace empty Onyx remove paths.
 Voter addresses are retained in the core registry because consumers cache them;
 removal detaches the callback and data, and a later bind can reuse the entry.
 Force-stop paths do not synchronously cancel their currently executing monitor.
+Stack-owned work callback scopes track the task inside MCA, avoiding an import
+of ``current_work`` which is absent from the public GKI KMI symbol lists.
 
 Firmware and external dependencies
 ----------------------------------
@@ -78,6 +80,8 @@ legacy Qualcomm interconnect drivers (their upstream node layout conflicts
 with the vendor-modified interconnect headers), and CoreSight USB (its QDSS
 header is outside this release). This generic verification configuration is not a device boot image or
 a substitute for the vendor Kleaf/GKI ABI build.
+This standalone checkout lacks ``build/kernel/kleaf`` and ``tools/bazel``;
+the complete Android/vendor build workspace is required for those targets.
 
 JEITA tests cover 68 checks against the official CN/Global tables. BASP tests
 cover 20,207 checks with address/undefined-behavior sanitizers, including

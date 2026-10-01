@@ -961,6 +961,9 @@ out:
 
 static void mca_charger_thermal_init_voter_work(struct work_struct *work)
 {
+	struct mca_work_callback mca_work_state;
+	CLASS(mca_work_callback, work_scope)(&mca_work_state, work);
+
 	struct mca_thermal_info *info = container_of(
 		work, struct mca_thermal_info, init_voter_work.work);
 	if (info && READ_ONCE(info->stopping))

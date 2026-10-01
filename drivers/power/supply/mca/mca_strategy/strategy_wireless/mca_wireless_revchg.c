@@ -79,11 +79,17 @@ EXPORT_SYMBOL(pen_charge_state_notifier_unregister_client);
 
 static void mca_wireless_user_enable_revchg_work(struct work_struct *work)
 {
+	struct mca_work_callback mca_work_state;
+	CLASS(mca_work_callback, work_scope)(&mca_work_state, work);
+
 	mca_wireless_rev_enable_reverse_charge(true);
 }
 
 static void mca_wireless_user_disable_revchg_work(struct work_struct *work)
 {
+	struct mca_work_callback mca_work_state;
+	CLASS(mca_work_callback, work_scope)(&mca_work_state, work);
+
 	mca_wireless_rev_enable_reverse_charge(false);
 }
 
@@ -1123,6 +1129,9 @@ EXPORT_SYMBOL(mca_wireless_rev_enable_reverse_charge);
 
 static void mca_wireless_rev_charge_config_work(struct work_struct *work)
 {
+	struct mca_work_callback mca_work_state;
+	CLASS(mca_work_callback, work_scope)(&mca_work_state, work);
+
 	struct mca_wireless_revchg *info =
 		container_of(work, struct mca_wireless_revchg,
 			     reverse_charge_config_work.work);
@@ -1211,6 +1220,9 @@ static void mca_wireless_rev_charge_config_work(struct work_struct *work)
 
 static void mca_wireless_rev_tx_ping_timeout_work(struct work_struct *work)
 {
+	struct mca_work_callback mca_work_state;
+	CLASS(mca_work_callback, work_scope)(&mca_work_state, work);
+
 	struct mca_wireless_revchg *info = container_of(
 		work, struct mca_wireless_revchg, tx_ping_timeout_work.work);
 	if (info && READ_ONCE(info->stopping))
@@ -1245,6 +1257,9 @@ static void mca_wireless_rev_tx_ping_timeout_work(struct work_struct *work)
 
 static void mca_wireless_rev_tx_transfer_timeout_work(struct work_struct *work)
 {
+	struct mca_work_callback mca_work_state;
+	CLASS(mca_work_callback, work_scope)(&mca_work_state, work);
+
 	struct mca_wireless_revchg *info =
 		container_of(work, struct mca_wireless_revchg,
 			     tx_transfer_timeout_work.work);
@@ -1280,6 +1295,9 @@ static void mca_wireless_rev_tx_transfer_timeout_work(struct work_struct *work)
 
 static void mca_wireless_disable_tx_work(struct work_struct *work)
 {
+	struct mca_work_callback mca_work_state;
+	CLASS(mca_work_callback, work_scope)(&mca_work_state, work);
+
 	struct mca_wireless_revchg *info = container_of(
 		work, struct mca_wireless_revchg, disable_tx_work.work);
 	if (info && READ_ONCE(info->stopping))
@@ -1312,18 +1330,27 @@ static void mca_wireless_disable_tx_work(struct work_struct *work)
 
 static void mca_wireless_enable_tx_work(struct work_struct *work)
 {
+	struct mca_work_callback mca_work_state;
+	CLASS(mca_work_callback, work_scope)(&mca_work_state, work);
+
 	mca_wireless_rev_enable_reverse_charge(true);
 	mca_log_err("reverse chg enbale tx");
 }
 
 static void mca_wireless_rev_update_to_wire_work(struct work_struct *work)
 {
+	struct mca_work_callback mca_work_state;
+	CLASS(mca_work_callback, work_scope)(&mca_work_state, work);
+
 	mca_wireless_rev_set_reverse_src(CHARGER_ADAPTER);
 	mca_log_err("rev_update_to_wire_work");
 }
 
 static void mca_wireless_rev_update_to_boost_work(struct work_struct *work)
 {
+	struct mca_work_callback mca_work_state;
+	CLASS(mca_work_callback, work_scope)(&mca_work_state, work);
+
 	struct mca_wireless_revchg *info =
 		container_of(work, struct mca_wireless_revchg,
 			     rev_update_to_boost_work.work);
@@ -1336,6 +1363,9 @@ static void mca_wireless_rev_update_to_boost_work(struct work_struct *work)
 
 static void mca_wireless_update_fw_mainthread_work(struct work_struct *work)
 {
+	struct mca_work_callback mca_work_state;
+	CLASS(mca_work_callback, work_scope)(&mca_work_state, work);
+
 	struct mca_wireless_revchg *info = container_of(
 		work, struct mca_wireless_revchg, fw_update_work.work);
 	if (info && READ_ONCE(info->stopping))
@@ -1381,11 +1411,17 @@ static void mca_wireless_update_fw_mainthread_work(struct work_struct *work)
 
 static void mca_wireless_poweron_update_work(struct work_struct *work)
 {
+	struct mca_work_callback mca_work_state;
+	CLASS(mca_work_callback, work_scope)(&mca_work_state, work);
+
 	mca_wireless_rev_update_fw_version(FW_UPDATE_POWER_ON);
 }
 
 static void mca_wireless_rev_test_start_work(struct work_struct *work)
 {
+	struct mca_work_callback mca_work_state;
+	CLASS(mca_work_callback, work_scope)(&mca_work_state, work);
+
 	struct mca_wireless_revchg *info = container_of(
 		work, struct mca_wireless_revchg, reverse_test_start_work.work);
 	if (info && READ_ONCE(info->stopping))
@@ -1401,6 +1437,9 @@ static void mca_wireless_rev_test_start_work(struct work_struct *work)
 
 static void mca_wireless_rev_test_stop_work(struct work_struct *work)
 {
+	struct mca_work_callback mca_work_state;
+	CLASS(mca_work_callback, work_scope)(&mca_work_state, work);
+
 	struct mca_wireless_revchg *info = container_of(
 		work, struct mca_wireless_revchg, reverse_test_stop_work.work);
 	if (info && READ_ONCE(info->stopping))
@@ -1426,6 +1465,9 @@ static void mca_wireless_rev_test_stop_work(struct work_struct *work)
 
 static void mca_wireless_rev_pen_place_err_check_work(struct work_struct *work)
 {
+	struct mca_work_callback mca_work_state;
+	CLASS(mca_work_callback, work_scope)(&mca_work_state, work);
+
 	struct mca_wireless_revchg *info =
 		container_of(work, struct mca_wireless_revchg,
 			     pen_place_err_check_work.work);
@@ -1459,6 +1501,9 @@ static void mca_wireless_rev_pen_place_err_check_work(struct work_struct *work)
 
 static void mca_wireless_rev_pen_data_handle_work(struct work_struct *work)
 {
+	struct mca_work_callback mca_work_state;
+	CLASS(mca_work_callback, work_scope)(&mca_work_state, work);
+
 	struct mca_wireless_revchg *info = container_of(
 		work, struct mca_wireless_revchg, pen_data_handle_work.work);
 	if (info && READ_ONCE(info->stopping))
@@ -1556,6 +1601,9 @@ static void mca_wireless_rev_pen_data_handle_work(struct work_struct *work)
 
 static void mca_wireless_rev_monitor_work(struct work_struct *work)
 {
+	struct mca_work_callback mca_work_state;
+	CLASS(mca_work_callback, work_scope)(&mca_work_state, work);
+
 	struct mca_wireless_revchg *info = container_of(
 		work, struct mca_wireless_revchg, monitor_work.work);
 	if (info && READ_ONCE(info->stopping))

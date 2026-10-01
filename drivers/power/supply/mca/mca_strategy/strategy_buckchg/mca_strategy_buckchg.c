@@ -1141,6 +1141,9 @@ strategy_buckchg_process_soc_limit_change_more(int enable,
 
 static void strategy_buckchg_soc_limit_stepper_workfunc(struct work_struct *work)
 {
+	struct mca_work_callback mca_work_state;
+	CLASS(mca_work_callback, work_scope)(&mca_work_state, work);
+
 	struct strategy_buckchg_dev *info = container_of(
 		work, struct strategy_buckchg_dev, soc_limit_stepper_work.work);
 	if (info && READ_ONCE(info->stopping))
@@ -2555,6 +2558,9 @@ static void strategy_buckchg_debug_soc_limit(struct strategy_buckchg_dev *info,
 
 static void strategy_buckchg_monitor_workfunc(struct work_struct *work)
 {
+	struct mca_work_callback mca_work_state;
+	CLASS(mca_work_callback, work_scope)(&mca_work_state, work);
+
 	struct strategy_buckchg_dev *info = container_of(
 		work, struct strategy_buckchg_dev, monitor_work.work);
 	if (info && READ_ONCE(info->stopping))
@@ -2705,6 +2711,9 @@ out:
 
 static void strategy_buckchg_base_flip_sw_cv_workfunc(struct work_struct *work)
 {
+	struct mca_work_callback mca_work_state;
+	CLASS(mca_work_callback, work_scope)(&mca_work_state, work);
+
 	struct strategy_buckchg_dev *info = container_of(
 		work, struct strategy_buckchg_dev, base_flip_sw_cv_work.work);
 	if (info && READ_ONCE(info->stopping))
@@ -2835,6 +2844,9 @@ static int strategy_buckchg_sw_cv_fv_comp(struct strategy_buckchg_dev *info)
 
 static void strategy_buckchg_sw_cv_workfunc(struct work_struct *work)
 {
+	struct mca_work_callback mca_work_state;
+	CLASS(mca_work_callback, work_scope)(&mca_work_state, work);
+
 	struct strategy_buckchg_dev *info = container_of(
 		work, struct strategy_buckchg_dev, sw_cv_work.work);
 	if (info && READ_ONCE(info->stopping))
@@ -3001,6 +3013,9 @@ strategy_buckchg_process_wireless_revchg(struct strategy_buckchg_dev *info)
 
 static void strategy_wls_revchg_monitor_workfunc(struct work_struct *work)
 {
+	struct mca_work_callback mca_work_state;
+	CLASS(mca_work_callback, work_scope)(&mca_work_state, work);
+
 	struct strategy_buckchg_dev *info =
 		container_of(work, struct strategy_buckchg_dev,
 			     wls_revchg_monitor_work.work);
@@ -3032,6 +3047,9 @@ err_out:
 
 static void strategy_csd_pulse_process_workfunc(struct work_struct *work)
 {
+	struct mca_work_callback mca_work_state;
+	CLASS(mca_work_callback, work_scope)(&mca_work_state, work);
+
 	struct strategy_buckchg_dev *info = container_of(
 		work, struct strategy_buckchg_dev, csd_pulse_process_work.work);
 	if (info && READ_ONCE(info->stopping))
@@ -3056,6 +3074,9 @@ static void strategy_csd_pulse_process_workfunc(struct work_struct *work)
 
 static void strategy_source_status_monitor_workfunc(struct work_struct *work)
 {
+	struct mca_work_callback mca_work_state;
+	CLASS(mca_work_callback, work_scope)(&mca_work_state, work);
+
 	struct strategy_buckchg_dev *info =
 		container_of(work, struct strategy_buckchg_dev,
 			     source_status_monitor_work.work);
@@ -3141,6 +3162,9 @@ reschedule:
 
 static void strategy_buckchg_check_pdsecret_workfunc(struct work_struct *work)
 {
+	struct mca_work_callback mca_work_state;
+	CLASS(mca_work_callback, work_scope)(&mca_work_state, work);
+
 	struct strategy_buckchg_dev *info = container_of(
 		work, struct strategy_buckchg_dev, check_pd_secret_work.work);
 	if (info && READ_ONCE(info->stopping))

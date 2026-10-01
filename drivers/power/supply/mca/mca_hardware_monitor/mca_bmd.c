@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0
 /* Xiaomi MCA battery-missing detector for Dada. */
+#include <mca/common/mca_workqueue.h>
 #include <linux/gpio.h>
 #include <linux/jiffies.h>
 #include <linux/module.h>
@@ -139,6 +140,9 @@ static void dada_bmd_sample(struct dada_bmd *info, bool report)
 
 static void dada_bmd_monitor_work(struct work_struct *work)
 {
+	struct mca_work_callback mca_work_state;
+	CLASS(mca_work_callback, work_scope)(&mca_work_state, work);
+
 	struct dada_bmd *info = container_of(to_delayed_work(work),
 						     struct dada_bmd,
 						     monitor_work);
@@ -150,6 +154,9 @@ static void dada_bmd_monitor_work(struct work_struct *work)
 
 static void dada_bmd_initial_report_work(struct work_struct *work)
 {
+	struct mca_work_callback mca_work_state;
+	CLASS(mca_work_callback, work_scope)(&mca_work_state, work);
+
 	struct dada_bmd *info = container_of(to_delayed_work(work),
 						     struct dada_bmd,
 						     initial_report_work);

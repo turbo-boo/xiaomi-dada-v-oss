@@ -5,6 +5,8 @@
  */
 #include <linux/module.h>
 #include <linux/kernel.h>
+#include <linux/sched.h>
+#include <linux/spinlock.h>
 #include <linux/workqueue.h>
 #include <mca/common/mca_log.h>
 #include <mca/common/mca_workqueue.h>
@@ -14,6 +16,54 @@
 #endif
 
 static struct workqueue_struct *mca_wq;
+static LIST_HEAD(mca_active_work);
+static DEFINE_SPINLOCK(mca_active_work_lock);
+
+struct mca_work_callback *mca_work_callback_enter(
+	struct mca_work_callback *callback, struct work_struct *work)
+{
+	unsigned long flags;
+
+	callback->work = work;
+	callback->task = current;
+	spin_lock_irqsave(&mca_active_work_lock, flags);
+	list_add(&callback->node, &mca_active_work);
+	spin_unlock_irqrestore(&mca_active_work_lock, flags);
+	return callback;
+}
+EXPORT_SYMBOL(mca_work_callback_enter);
+
+void mca_work_callback_exit(struct mca_work_callback *callback)
+{
+	unsigned long flags;
+
+	spin_lock_irqsave(&mca_active_work_lock, flags);
+	list_del(&callback->node);
+	spin_unlock_irqrestore(&mca_active_work_lock, flags);
+}
+EXPORT_SYMBOL(mca_work_callback_exit);
+
+void mca_cancel_delayed_work_sync(struct delayed_work *dwork)
+{
+	struct mca_work_callback *callback;
+	unsigned long flags;
+	bool self = false;
+
+	spin_lock_irqsave(&mca_active_work_lock, flags);
+	list_for_each_entry(callback, &mca_active_work, node) {
+		if (callback->work == &dwork->work && callback->task == current) {
+			self = true;
+			break;
+		}
+	}
+	spin_unlock_irqrestore(&mca_active_work_lock, flags);
+	/* A force-stop voter may run from the monitor it is stopping. */
+	if (self)
+		cancel_delayed_work(dwork);
+	else
+		cancel_delayed_work_sync(dwork);
+}
+EXPORT_SYMBOL(mca_cancel_delayed_work_sync);
 
 int mca_queue_delayed_work(struct delayed_work *dwork, unsigned long delay)
 {

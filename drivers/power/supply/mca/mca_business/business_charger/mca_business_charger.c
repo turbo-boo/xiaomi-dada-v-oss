@@ -16,6 +16,7 @@
  * GNU General Public License for more details.
  *
  */
+#include <mca/common/mca_workqueue.h>
 #include <linux/slab.h>
 #include <linux/module.h>
 #include <linux/kernel.h>
@@ -358,6 +359,9 @@ business_charger_wireless_delay_enable_rx_work(struct work_struct *work)
 
 static void business_charger_wireless_reset_rx_work(struct work_struct *work)
 {
+	struct mca_work_callback mca_work_state;
+	CLASS(mca_work_callback, work_scope)(&mca_work_state, work);
+
 	int usb_present = 0;
 
 	(void)mca_strategy_func_get_status(STRATEGY_FUNC_TYPE_BUCK_CHARGE,

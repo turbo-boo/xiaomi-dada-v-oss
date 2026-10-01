@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0
 /* Xiaomi MCA software IBAT OCP monitor for Dada. */
+#include <mca/common/mca_workqueue.h>
 #include <linux/jiffies.h>
 #include <linux/module.h>
 #include <linux/of.h>
@@ -106,6 +107,9 @@ static int dada_ibat_ocp_sample(struct dada_ibat_ocp *info, int *status)
 
 static void dada_ibat_ocp_work(struct work_struct *work)
 {
+	struct mca_work_callback mca_work_state;
+	CLASS(mca_work_callback, work_scope)(&mca_work_state, work);
+
 	struct dada_ibat_ocp *info = container_of(to_delayed_work(work),
 						   struct dada_ibat_ocp, work);
 	int old = info->status;

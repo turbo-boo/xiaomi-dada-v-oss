@@ -16,6 +16,7 @@
  * GNU General Public License for more details.
  *
  */
+#include <mca/common/mca_workqueue.h>
 #include <mca/common/mca_callback.h>
 
 #include <linux/slab.h>
@@ -51,6 +52,9 @@ static struct business_battery *g_mca_business_battery;
 /*
 static void battery_event_process_work(struct work_struct *work)
 {
+	struct mca_work_callback mca_work_state;
+	CLASS(mca_work_callback, work_scope)(&mca_work_state, work);
+
 	struct business_battery *battery = container_of(work,
 			struct business_battery, event_process_work);
 

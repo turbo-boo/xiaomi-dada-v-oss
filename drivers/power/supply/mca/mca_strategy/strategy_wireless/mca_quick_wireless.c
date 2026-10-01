@@ -2140,6 +2140,9 @@ static void mca_wireless_quick_charge_change_path(
 
 static void mca_wireless_quick_charge_monitor_work(struct work_struct *work)
 {
+	struct mca_work_callback mca_work_state;
+	CLASS(mca_work_callback, work_scope)(&mca_work_state, work);
+
 	struct mca_wireless_quick_charge_info *info = container_of(
 		work, struct mca_wireless_quick_charge_info, monitor_work.work);
 	if (info && READ_ONCE(info->stopping))

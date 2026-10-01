@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0
 /* Xiaomi MCA software VBAT OVP monitor for Dada. */
+#include <mca/common/mca_workqueue.h>
 #include <linux/jiffies.h>
 #include <linux/module.h>
 #include <linux/of.h>
@@ -130,6 +131,9 @@ static int dada_vbat_ovp_sample(struct dada_vbat_ovp *info, bool *ovp)
 
 static void dada_vbat_ovp_work(struct work_struct *work)
 {
+	struct mca_work_callback mca_work_state;
+	CLASS(mca_work_callback, work_scope)(&mca_work_state, work);
+
 	struct dada_vbat_ovp *info = container_of(to_delayed_work(work),
 						   struct dada_vbat_ovp, work);
 	bool previous = info->triggered;

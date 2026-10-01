@@ -16,6 +16,7 @@
  * GNU General Public License for more details.
  *
  */
+#include <mca/common/mca_workqueue.h>
 #include <mca/common/mca_callback.h>
 
 
@@ -465,6 +466,9 @@ static void smart_charge_set_soc_limit(bool enable)
 #define SMART_CHG_SOC_HYS 2
 static void smart_charge_soc_limit_workfunc(struct work_struct *work)
 {
+	struct mca_work_callback mca_work_state;
+	CLASS(mca_work_callback, work_scope)(&mca_work_state, work);
+
 	struct smart_charge_info *info = container_of(
 		work, struct smart_charge_info, smart_soc_limit_work.work);
 	if (info && READ_ONCE(info->stopping))
@@ -1112,6 +1116,9 @@ static void smart_charge_handle_mishow_config(struct smart_charge_info *info)
 
 static void smart_charge_workfunc(struct work_struct *work)
 {
+	struct mca_work_callback mca_work_state;
+	CLASS(mca_work_callback, work_scope)(&mca_work_state, work);
+
 	struct smart_charge_info *info = container_of(
 		work, struct smart_charge_info, smart_charge_work.work);
 	if (info && READ_ONCE(info->stopping))
@@ -1155,6 +1162,9 @@ static void smart_charge_workfunc(struct work_struct *work)
 
 static void smart_charge_sense_chg_workfunc(struct work_struct *work)
 {
+	struct mca_work_callback mca_work_state;
+	CLASS(mca_work_callback, work_scope)(&mca_work_state, work);
+
 	struct smart_charge_info *info = container_of(
 		work, struct smart_charge_info, smart_sense_chg_work.work);
 	if (info && READ_ONCE(info->stopping))

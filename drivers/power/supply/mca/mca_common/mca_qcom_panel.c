@@ -1,4 +1,5 @@
 // SPDX-License-Identifier: GPL-2.0
+#include <mca/common/mca_workqueue.h>
 #include <linux/delay.h>
 #include <linux/device.h>
 #include <linux/err.h>
@@ -123,6 +124,9 @@ static int mca_panel_register_notifier(struct mca_panel_dev *panel_dev)
 
 static void mca_panel_register_work(struct work_struct *work)
 {
+	struct mca_work_callback mca_work_state;
+	CLASS(mca_work_callback, work_scope)(&mca_work_state, work);
+
 	struct mca_panel_dev *panel = container_of(
 		to_delayed_work(work), struct mca_panel_dev,
 		panel_notify_register_work);

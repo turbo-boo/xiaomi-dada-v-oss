@@ -1,3 +1,4 @@
+#include <mca/common/mca_workqueue.h>
 #include <linux/module.h>
 #include <linux/kernel.h>
 #include <linux/platform_device.h>
@@ -439,6 +440,9 @@ static struct platform_class_buckchg_ops g_qcom_buckchg_ops = {
 
 static void qcom_subpmic_update_usb_type_work(struct work_struct *work)
 {
+	struct mca_work_callback mca_work_state;
+	CLASS(mca_work_callback, work_scope)(&mca_work_state, work);
+
 	struct qcom_subpmic *sc = container_of(to_delayed_work(work),
 					       struct qcom_subpmic, update_usb_type_work);
 	int usb_online = 0, real_type = 0, pd_active = 0, rc;
@@ -489,6 +493,9 @@ static int qcom_subpmic_sync_cfg_work_count;
 
 static void qcom_subpmic_sync_cfg_work(struct work_struct *work)
 {
+	struct mca_work_callback mca_work_state;
+	CLASS(mca_work_callback, work_scope)(&mca_work_state, work);
+
 	struct qcom_subpmic *sc = container_of(to_delayed_work(work),
 					       struct qcom_subpmic, sync_cfg_work);
 	bool cp_present = false;
@@ -522,6 +529,9 @@ retry:
 
 static void qcom_subpmic_notify_change_work(struct work_struct *work)
 {
+	struct mca_work_callback mca_work_state;
+	CLASS(mca_work_callback, work_scope)(&mca_work_state, work);
+
 	struct qcom_subpmic *sc = container_of(work, struct qcom_subpmic,
 					       notify_change_work);
 	struct qcom_subpmic_notify_entry *entry, *tmp;

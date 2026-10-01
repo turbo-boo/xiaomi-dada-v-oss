@@ -3005,6 +3005,9 @@ static int strategy_wireless_process_irq(struct strategy_wireless_dev *info)
 
 static void strategy_wireless_process_irq_work(struct work_struct *work)
 {
+	struct mca_work_callback mca_work_state;
+	CLASS(mca_work_callback, work_scope)(&mca_work_state, work);
+
 	struct strategy_wireless_dev *info = container_of(
 		work, struct strategy_wireless_dev, process_irq_work.work);
 	if (info && READ_ONCE(info->stopping))
@@ -3496,6 +3499,9 @@ strategy_wireless_switch_to_half_bridge(struct strategy_wireless_dev *info)
 
 static void strategy_wireless_monitor_work(struct work_struct *work)
 {
+	struct mca_work_callback mca_work_state;
+	CLASS(mca_work_callback, work_scope)(&mca_work_state, work);
+
 	struct strategy_wireless_dev *info = container_of(
 		work, struct strategy_wireless_dev, monitor_work.work);
 	if (info && READ_ONCE(info->stopping))
@@ -3594,6 +3600,9 @@ out:
 #define FV_STEP 5
 static void strategy_wireless_buckchg_sw_cv_workfunc(struct work_struct *work)
 {
+	struct mca_work_callback mca_work_state;
+	CLASS(mca_work_callback, work_scope)(&mca_work_state, work);
+
 	struct strategy_wireless_dev *info = container_of(
 		work, struct strategy_wireless_dev, sw_cv_work.work);
 	if (info && READ_ONCE(info->stopping))
@@ -3650,6 +3659,9 @@ static void strategy_wireless_buckchg_sw_cv_workfunc(struct work_struct *work)
 static void strategy_wireless_buckchg_base_flip_sw_cv_workfunc(
 	struct work_struct *work)
 {
+	struct mca_work_callback mca_work_state;
+	CLASS(mca_work_callback, work_scope)(&mca_work_state, work);
+
 	struct strategy_wireless_dev *info = container_of(
 		work, struct strategy_wireless_dev, base_flip_sw_cv_work.work);
 	if (info && READ_ONCE(info->stopping))
@@ -3737,6 +3749,9 @@ cv:
 
 static void strategy_wireless_get_adapter_work(struct work_struct *work)
 {
+	struct mca_work_callback mca_work_state;
+	CLASS(mca_work_callback, work_scope)(&mca_work_state, work);
+
 	struct strategy_wireless_dev *info = container_of(
 		work, struct strategy_wireless_dev, get_adapter_work.work);
 	if (info && READ_ONCE(info->stopping))
@@ -3747,6 +3762,9 @@ static void strategy_wireless_get_adapter_work(struct work_struct *work)
 
 static void strategy_wireless_change_cp_mode_workfunc(struct work_struct *work)
 {
+	struct mca_work_callback mca_work_state;
+	CLASS(mca_work_callback, work_scope)(&mca_work_state, work);
+
 	struct strategy_wireless_dev *info = container_of(
 		work, struct strategy_wireless_dev, change_cp_mode_work.work);
 	if (info && READ_ONCE(info->stopping))
@@ -3763,6 +3781,9 @@ static void strategy_wireless_change_cp_mode_workfunc(struct work_struct *work)
 
 static void strategy_wireless_find_voter_work(struct work_struct *work)
 {
+	struct mca_work_callback mca_work_state;
+	CLASS(mca_work_callback, work_scope)(&mca_work_state, work);
+
 	struct strategy_wireless_dev *info = container_of(
 		work, struct strategy_wireless_dev, find_voter_work.work);
 	if (info && READ_ONCE(info->stopping))
@@ -3780,6 +3801,9 @@ static void strategy_wireless_find_voter_work(struct work_struct *work)
 
 static void strategy_wireless_update_soc_decimal_work(struct work_struct *work)
 {
+	struct mca_work_callback mca_work_state;
+	CLASS(mca_work_callback, work_scope)(&mca_work_state, work);
+
 	//struct strategy_wireless_dev *info = container_of(work,
 	//	struct strategy_wireless_dev, report_soc_decimal_work.work);
 
@@ -3807,6 +3831,9 @@ static void strategy_wireless_update_soc_decimal_work(struct work_struct *work)
 
 static void strategy_wireless_renegociation_work(struct work_struct *work)
 {
+	struct mca_work_callback mca_work_state;
+	CLASS(mca_work_callback, work_scope)(&mca_work_state, work);
+
 	struct strategy_wireless_dev *info = container_of(
 		work, struct strategy_wireless_dev, renegociation_work.work);
 	if (info && READ_ONCE(info->stopping))
@@ -3824,6 +3851,9 @@ static void strategy_wireless_renegociation_work(struct work_struct *work)
 
 static void strategy_wireless_loop_work(struct work_struct *work)
 {
+	struct mca_work_callback mca_work_state;
+	CLASS(mca_work_callback, work_scope)(&mca_work_state, work);
+
 	struct strategy_wireless_dev *info = container_of(
 		work, struct strategy_wireless_dev, wireless_loop_work.work);
 	if (info && READ_ONCE(info->stopping))
@@ -3840,6 +3870,9 @@ static void strategy_wireless_loop_work(struct work_struct *work)
 
 static void strategy_wireless_rx_fastcharge_work(struct work_struct *work)
 {
+	struct mca_work_callback mca_work_state;
+	CLASS(mca_work_callback, work_scope)(&mca_work_state, work);
+
 	struct strategy_wireless_dev *info = container_of(
 		work, struct strategy_wireless_dev, rx_fastcharge_work.work);
 	if (info && READ_ONCE(info->stopping))
@@ -3869,6 +3902,9 @@ static void strategy_wireless_rx_fastcharge_work(struct work_struct *work)
 
 static void strategy_wireless_drawload_work(struct work_struct *work)
 {
+	struct mca_work_callback mca_work_state;
+	CLASS(mca_work_callback, work_scope)(&mca_work_state, work);
+
 	struct strategy_wireless_dev *info = container_of(
 		work, struct strategy_wireless_dev, wls_drawload_work.work);
 	if (info && READ_ONCE(info->stopping))
@@ -3916,6 +3952,9 @@ static void strategy_wireless_drawload_work(struct work_struct *work)
 
 static void strategy_wireless_rx_alarm_work(struct work_struct *work)
 {
+	struct mca_work_callback mca_work_state;
+	CLASS(mca_work_callback, work_scope)(&mca_work_state, work);
+
 	struct strategy_wireless_dev *info = container_of(
 		work, struct strategy_wireless_dev, rx_alarm_work.work);
 	if (info && READ_ONCE(info->stopping))
@@ -3962,6 +4001,9 @@ static void strategy_wireless_rx_alarm_work(struct work_struct *work)
 
 static void strategy_wireless_max_power_control_work(struct work_struct *work)
 {
+	struct mca_work_callback mca_work_state;
+	CLASS(mca_work_callback, work_scope)(&mca_work_state, work);
+
 	struct strategy_wireless_dev *info =
 		container_of(work, struct strategy_wireless_dev,
 			     max_power_control_work.work);
@@ -3996,6 +4038,9 @@ static void strategy_wireless_max_power_control_work(struct work_struct *work)
 
 static void strategy_wireless_fw_state_work(struct work_struct *work)
 {
+	struct mca_work_callback mca_work_state;
+	CLASS(mca_work_callback, work_scope)(&mca_work_state, work);
+
 	int len = 0;
 	char event[MCA_EVENT_NOTIFY_SIZE] = { 0 };
 	struct mca_event_notify_data event_data = { 0 };
@@ -4012,6 +4057,9 @@ static void strategy_wireless_fw_state_work(struct work_struct *work)
 
 static void strategy_wireless_set_vdd_flag_work(struct work_struct *work)
 {
+	struct mca_work_callback mca_work_state;
+	CLASS(mca_work_callback, work_scope)(&mca_work_state, work);
+
 	struct strategy_wireless_dev *info = container_of(
 		work, struct strategy_wireless_dev, set_vdd_flag_work.work);
 	if (info && READ_ONCE(info->stopping))
@@ -4030,6 +4078,9 @@ static void strategy_wireless_set_vdd_flag_work(struct work_struct *work)
 
 static void strategy_wireless_soc_limit_stepper_work(struct work_struct *work)
 {
+	struct mca_work_callback mca_work_state;
+	CLASS(mca_work_callback, work_scope)(&mca_work_state, work);
+
 	struct strategy_wireless_dev *info =
 		container_of(work, struct strategy_wireless_dev,
 			     soc_limit_stepper_work.work);
@@ -4055,6 +4106,9 @@ strategy_wireless_update_wireless_thermal_work(struct work_struct *work)
 
 static void strategy_wireless_mutex_unlock_work(struct work_struct *work)
 {
+	struct mca_work_callback mca_work_state;
+	CLASS(mca_work_callback, work_scope)(&mca_work_state, work);
+
 	struct strategy_wireless_dev *info = container_of(
 		work, struct strategy_wireless_dev, mutex_unlock_work.work);
 	if (info && READ_ONCE(info->stopping))
@@ -4126,6 +4180,9 @@ static int strategy_wireless_process_trans(struct strategy_wireless_dev *info)
 
 static void strategy_wireless_trans_data_work(struct work_struct *work)
 {
+	struct mca_work_callback mca_work_state;
+	CLASS(mca_work_callback, work_scope)(&mca_work_state, work);
+
 	struct strategy_wireless_dev *info = container_of(
 		work, struct strategy_wireless_dev, trans_data_work.work);
 	if (info && READ_ONCE(info->stopping))

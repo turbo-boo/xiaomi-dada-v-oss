@@ -1457,6 +1457,9 @@ static int strategy_fg_reset_co_to_default(struct strategy_fg *fg)
 
 static void strategy_fg_reset_default_work(struct work_struct *work)
 {
+	struct mca_work_callback mca_work_state;
+	CLASS(mca_work_callback, work_scope)(&mca_work_state, work);
+
 	platform_fg_ops_set_co(FG_IC_MASTER, 0);
 	platform_fg_ops_set_co(FG_IC_SLAVE, 0);
 }
@@ -2597,6 +2600,9 @@ void strategy_fg_update_batt_info(struct strategy_fg *fg)
 
 static void strategy_fg_monitor_workfunc(struct work_struct *work)
 {
+	struct mca_work_callback mca_work_state;
+	CLASS(mca_work_callback, work_scope)(&mca_work_state, work);
+
 	struct strategy_fg *fg =
 		container_of(work, struct strategy_fg, monitor_work.work);
 	if (fg && READ_ONCE(fg->stopping))
@@ -2670,6 +2676,9 @@ static void strategy_fg_monitor_workfunc(struct work_struct *work)
 
 static void strategy_fg_dtpt_monitor_work(struct work_struct *work)
 {
+	struct mca_work_callback mca_work_state;
+	CLASS(mca_work_callback, work_scope)(&mca_work_state, work);
+
 	struct strategy_fg *fg =
 		container_of(work, struct strategy_fg, dtpt_monitor_work.work);
 	if (fg && READ_ONCE(fg->stopping))
@@ -2716,6 +2725,9 @@ static void strategy_fg_dtpt_monitor_work(struct work_struct *work)
 
 static void strategy_fl4p0_calibration_work(struct work_struct *work)
 {
+	struct mca_work_callback mca_work_state;
+	CLASS(mca_work_callback, work_scope)(&mca_work_state, work);
+
 	struct strategy_fg *fg = container_of(work, struct strategy_fg,
 					      fl4p0_calibration_work.work);
 	if (fg && READ_ONCE(fg->stopping))
@@ -2747,6 +2759,9 @@ static void strategy_fl4p0_calibration_work(struct work_struct *work)
 
 static void strategy_force_report_full_work(struct work_struct *work)
 {
+	struct mca_work_callback mca_work_state;
+	CLASS(mca_work_callback, work_scope)(&mca_work_state, work);
+
 	struct strategy_fg *fg = container_of(work, struct strategy_fg,
 					      force_report_full_work.work);
 	if (fg && READ_ONCE(fg->stopping))
@@ -2786,6 +2801,9 @@ static void strategy_force_report_full_work(struct work_struct *work)
 
 static void strategy_nvt1000_ota_monitor_work(struct work_struct *work)
 {
+	struct mca_work_callback mca_work_state;
+	CLASS(mca_work_callback, work_scope)(&mca_work_state, work);
+
 	struct strategy_fg *fg =
 		container_of(work, struct strategy_fg, ota_update_work.work);
 	if (fg && READ_ONCE(fg->stopping))
@@ -3895,6 +3913,9 @@ static int mca_strategy_fg_shutdown_cb(struct notifier_block *nb,
 
 static void strategy_batt_abnormal_dfx_work(struct work_struct *work)
 {
+	struct mca_work_callback mca_work_state;
+	CLASS(mca_work_callback, work_scope)(&mca_work_state, work);
+
 	struct strategy_fg *fg = container_of(to_delayed_work(work),
 					      struct strategy_fg,
 					      batt_abnormal_dfx_work);
@@ -3982,6 +4003,9 @@ static struct strategy_fg_class_ops g_strategy_fg_ops = {
 
 static void delay_reset_full_flag_work(struct work_struct *work)
 {
+	struct mca_work_callback mca_work_state;
+	CLASS(mca_work_callback, work_scope)(&mca_work_state, work);
+
 	struct strategy_fg *fg = container_of(work, struct strategy_fg,
 					      delay_reset_full_flag_work.work);
 	if (fg && READ_ONCE(fg->stopping))

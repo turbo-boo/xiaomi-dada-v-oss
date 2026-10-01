@@ -17,6 +17,7 @@
  *
  */
 
+#include <mca/common/mca_workqueue.h>
 #include <mca/platform/platform_cp_class.h>
 #include "inc/sc8581_reg.h"
 #include "inc/sc8581.h"
@@ -2287,6 +2288,9 @@ static struct platform_class_cp_ops sc8581_chg_ops = {
 
 static void sc8581_irq_handler(struct work_struct *work)
 {
+	struct mca_work_callback mca_work_state;
+	CLASS(mca_work_callback, work_scope)(&mca_work_state, work);
+
 	struct sc8581_device *bq =
 		container_of(work, struct sc8581_device, irq_handle_work.work);
 	bool usb_present;

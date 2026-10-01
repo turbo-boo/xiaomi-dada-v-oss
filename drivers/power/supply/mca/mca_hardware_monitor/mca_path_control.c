@@ -7,6 +7,7 @@
  * control method to OVPGATE (CP-chip scheme); the other gate roles are marked
  * "null" in control_scheme and are therefore intentionally left untouched.
  */
+#include <mca/common/mca_workqueue.h>
 #include <linux/errno.h>
 #include <linux/jiffies.h>
 #include <linux/module.h>
@@ -304,6 +305,9 @@ EXPORT_SYMBOL(mca_path_control_enable_gate);
 
 static void dada_path_init_work(struct work_struct *work)
 {
+	struct mca_work_callback mca_work_state;
+	CLASS(mca_work_callback, work_scope)(&mca_work_state, work);
+
 	struct dada_path_control *info = container_of(to_delayed_work(work),
 						      struct dada_path_control,
 						      init_work);

@@ -3339,6 +3339,9 @@ mca_quick_charge_change_path(struct mca_quick_charge_info *info)
 
 static void mca_quick_charge_pps_ptf_work(struct work_struct *work)
 {
+	struct mca_work_callback mca_work_state;
+	CLASS(mca_work_callback, work_scope)(&mca_work_state, work);
+
 	struct mca_quick_charge_info *info = container_of(
 		work, struct mca_quick_charge_info, pps_ptf_work.work);
 	if (info && READ_ONCE(info->stopping))
@@ -3404,6 +3407,9 @@ static void mca_quick_charge_ibus_queue_push(struct mca_quick_charge_info *info,
 
 static void mca_quick_charge_monitor_work(struct work_struct *work)
 {
+	struct mca_work_callback mca_work_state;
+	CLASS(mca_work_callback, work_scope)(&mca_work_state, work);
+
 	struct mca_quick_charge_info *info = container_of(
 		work, struct mca_quick_charge_info, monitor_work.work);
 	if (info && READ_ONCE(info->stopping))
@@ -3480,6 +3486,9 @@ out:
 
 static void mca_quick_charge_vfc_work(struct work_struct *work)
 {
+	struct mca_work_callback mca_work_state;
+	CLASS(mca_work_callback, work_scope)(&mca_work_state, work);
+
 	struct mca_quick_charge_info *info =
 		container_of(work, struct mca_quick_charge_info, vfc_work.work);
 	if (info && READ_ONCE(info->stopping))
