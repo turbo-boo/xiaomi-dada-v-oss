@@ -1,161 +1,221 @@
 // SPDX-License-Identifier: GPL-2.0
-/* Xiaomi MCA HL7603 boost-bypass driver for Dada. */
-#include <linux/delay.h>
-#include <linux/errno.h>
-#include <linux/i2c.h>
-#include <linux/module.h>
-#include <linux/of.h>
-#include <linux/slab.h>
-
-#include <mca/common/mca_event.h>
+/*
+ * hl7603.c
+ *
+ * boost bypass ic driver
+ *
+ * Copyright (c) 2023-2023 Xiaomi Technologies Co., Ltd.
+ *
+ * This software is licensed under the terms of the GNU General Public
+ * License version 2, as published by the Free Software Foundation, and
+ * may be copied, distributed, and modified under those terms.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+ * GNU General Public License for more details.
+ *
+ */
 #include <mca/common/mca_log.h>
+#include <mca/common/mca_event.h>
 #include <mca/common/mca_parse_dts.h>
+#include <mca/common/mca_sysfs.h>
+#include <mca/common/mca_panel.h>
+#include <linux/string.h>
+#include <linux/device.h>
+#include <linux/kernel.h>
+#include <linux/i2c.h>
+#include "inc/hl7603.h"
 
 #ifndef MCA_LOG_TAG
 #define MCA_LOG_TAG "boost_hl7603"
 #endif
 
-#define HL7603_VOUT_REG              0x02
-#define HL7603_VOUT_BASE_MV          2850
-#define HL7603_VOUT_MAX_MV           5500
-#define HL7603_VOUT_STEP_MV          50
-#define HL7603_VOUT_DEFAULT_MV       3400
+#define VOUT_THRSHOLD_DEFAULT 3400
 
-struct hl7603_dev {
-	struct device *dev;
-	struct i2c_client *client;
-	struct notifier_block panel_nb;
-	bool support_hbm;
-	u32 vout_threshold_mv;
-	u32 hbm_vout_threshold_mv;
+static int hl7603_set_voltage_threshold(struct boost_bypass_dev *info,
+					u32 vout_threshold);
+
+#ifdef CONFIG_DEBUG_FS
+enum boost_attr_list {
+	BOOST_PROP_VOUT_THRESHOLD,
+	BOOST_PROP_MAX,
 };
 
-static int hl7603_set_threshold(struct hl7603_dev *info, u32 threshold_mv)
+static ssize_t boost_debugfs_show(void *priv_data, char *buf)
 {
-	u8 reg;
-	int ret;
+	struct mca_debugfs_attr_data *attr_data =
+		(struct mca_debugfs_attr_data *)priv_data;
+	struct mca_debugfs_attr_info *attr_info = attr_data->attr_info;
+	struct boost_bypass_dev *dev_data =
+		(struct boost_bypass_dev *)attr_data->private;
+	u8 val = 0;
+	ssize_t count = 0;
 
-	if (!info)
-		return -EINVAL;
-	if (threshold_mv < HL7603_VOUT_BASE_MV ||
-	    threshold_mv > HL7603_VOUT_MAX_MV)
-		return -ERANGE;
-
-	reg = (threshold_mv - HL7603_VOUT_BASE_MV) /
-	      HL7603_VOUT_STEP_MV;
-	ret = i2c_smbus_write_byte_data(info->client, HL7603_VOUT_REG, reg);
-	if (ret < 0)
-		return ret;
-
-	ret = i2c_smbus_read_byte_data(info->client, HL7603_VOUT_REG);
-	if (ret < 0)
-		return ret;
-	if ((u8)ret != reg) {
-		mca_log_err("threshold verify mismatch wrote=0x%x read=0x%x\n",
-			    reg, ret);
-		return -EIO;
+	if (!dev_data || !attr_info) {
+		mca_log_err("null pointer show\n");
+		return count;
 	}
-
-	mca_log_info("vout threshold=%u mV reg=0x%x\n", threshold_mv, reg);
-	return 0;
+	switch (attr_info->debugfs_attr_name) {
+	case BOOST_PROP_VOUT_THRESHOLD:
+		val = i2c_smbus_read_byte_data(dev_data->client, VOUT_REG);
+		count = scnprintf(buf, PAGE_SIZE, "%x\n", val);
+		break;
+	default:
+		break;
+	}
+	return count;
 }
 
-static int hl7603_parse_dt(struct hl7603_dev *info)
+static ssize_t boost_debugfs_store(void *priv_data, const char *buf,
+				   size_t count)
+{
+	struct mca_debugfs_attr_data *attr_data =
+		(struct mca_debugfs_attr_data *)priv_data;
+	struct mca_debugfs_attr_info *attr_info = attr_data->attr_info;
+	struct boost_bypass_dev *dev_data =
+		(struct boost_bypass_dev *)attr_data->private;
+	int val = 0;
+	int ret = 0;
+
+	if (!dev_data || !attr_info) {
+		mca_log_err("null pointer store\n");
+		return count;
+	}
+
+	if (kstrtoint(buf, 10, &val))
+		return -EINVAL;
+
+	switch (attr_info->debugfs_attr_name) {
+	case BOOST_PROP_VOUT_THRESHOLD:
+		ret = hl7603_set_voltage_threshold(dev_data, val);
+		if (ret < 0)
+			mca_log_err("BOOST_PROP_VOUT_THRESHOLD store fail\n");
+		break;
+	default:
+		break;
+	}
+
+	return count;
+}
+
+struct mca_debugfs_attr_info boost_debugfs_field_tbl[] = {
+	mca_debugfs_attr(boost_debugfs, 0664, BOOST_PROP_VOUT_THRESHOLD, vout),
+};
+
+#define BOOST_DEBUGFS_ATTRS_SIZE ARRAY_SIZE(boost_debugfs_field_tbl)
+#endif
+
+static int hl7603_parse_dt(struct boost_bypass_dev *info)
 {
 	struct device_node *np = info->dev->of_node;
-	int ret;
 
-	if (!np)
-		return -ENODEV;
-
-	ret = mca_parse_dts_u32(np, "vout_threshold",
-				&info->vout_threshold_mv,
-				HL7603_VOUT_DEFAULT_MV);
-	if (ret)
-		return ret;
-
-	info->support_hbm = of_property_read_bool(np, "support_hbm");
-	if (info->support_hbm) {
-		ret = mca_parse_dts_u32(np, "hbm_vout_threshold",
-					&info->hbm_vout_threshold_mv,
-					info->vout_threshold_mv);
-		if (ret)
-			return ret;
+	if (!np) {
+		mca_log_err("device tree info missing\n");
+		return -1;
 	}
+	mca_parse_dts_u32(np, "vout_threshold", &(info->vout_threshold),
+			  VOUT_THRSHOLD_DEFAULT);
+	info->suport_hbm = of_property_read_bool(np, "support_hbm");
+	if (info->suport_hbm)
+		mca_parse_dts_u32(np, "hbm_vout_threshold",
+				  &(info->hbm_vout_threshold),
+				  VOUT_THRSHOLD_DEFAULT);
 
 	return 0;
 }
 
-static int hl7603_panel_notifier(struct notifier_block *nb,
-				  unsigned long event, void *data)
+static int hl7603_set_voltage_threshold(struct boost_bypass_dev *info,
+					u32 vout_threshold)
 {
-	struct hl7603_dev *info = container_of(nb, struct hl7603_dev, panel_nb);
-	int hbm;
+	u8 val = 0;
+	int ret;
 
-	if (event != MCA_EVENT_PANEL_HBM_STATE_CHANGE || !info->support_hbm ||
-	    !data)
-		return NOTIFY_DONE;
+	if ((vout_threshold > VOUT_REG_MAX) || vout_threshold < VOUT_REG_BASE) {
+		mca_log_err("vout_threshold no valid %d", info->vout_threshold);
+		return -1;
+	}
+	val = (vout_threshold - VOUT_REG_BASE) / VOUT_REG_STEP;
 
-	hbm = *(int *)data;
-	(void)hl7603_set_threshold(info, hbm ? info->hbm_vout_threshold_mv :
-						 info->vout_threshold_mv);
-	return NOTIFY_OK;
+	ret = i2c_smbus_write_byte_data(info->client, VOUT_REG, val);
+	if (ret < 0) {
+		mca_log_err("i2c read reg 0x%02X faild\n", VOUT_REG);
+		return ret;
+	}
+	val = i2c_smbus_read_byte_data(info->client, VOUT_REG);
+	mca_log_info("i2c read reg [0x%02X]=[%d]\n", VOUT_REG, val);
+
+	return ret;
+}
+
+static int hl7603_panel_notifier_cb(struct notifier_block *nb,
+				    unsigned long event, void *val)
+{
+	struct boost_bypass_dev *info =
+		container_of(nb, struct boost_bypass_dev, panel_nb);
+
+	switch (event) {
+	case MCA_EVENT_PANEL_HBM_STATE_CHANGE:
+		if (info->suport_hbm)
+			hl7603_set_voltage_threshold(
+				info, *(int *)val ? info->hbm_vout_threshold :
+						    info->vout_threshold);
+		break;
+	default:
+		break;
+	}
+
+	return NOTIFY_DONE;
 }
 
 static int hl7603_probe(struct i2c_client *client)
 {
-	struct hl7603_dev *info;
 	int ret;
+	struct boost_bypass_dev *info;
 
+	mca_log_info("%s start probe\n", __func__);
 	info = devm_kzalloc(&client->dev, sizeof(*info), GFP_KERNEL);
 	if (!info)
 		return -ENOMEM;
 
-	info->dev = &client->dev;
 	info->client = client;
+	info->dev = &client->dev;
 	i2c_set_clientdata(client, info);
-
 	ret = hl7603_parse_dt(info);
-	if (ret)
-		return dev_err_probe(&client->dev, ret, "failed to parse HL7603 DT\n");
+	ret |= hl7603_set_voltage_threshold(info, info->vout_threshold);
+	if (ret) {
+		mca_log_err("failed to init hl7603\n");
+		return ret;
+	}
+#ifdef CONFIG_DEBUG_FS
+	mca_debugfs_create_group("hl7603", boost_debugfs_field_tbl,
+				 BOOST_DEBUGFS_ATTRS_SIZE, info);
+#endif
 
-	ret = hl7603_set_threshold(info, info->vout_threshold_mv);
-	if (ret)
-		return dev_err_probe(&client->dev, ret,
-				     "failed to initialize HL7603 threshold\n");
+	info->panel_nb.notifier_call = hl7603_panel_notifier_cb;
+	mca_event_block_notify_register(MCA_EVENT_TYPE_PANEL, &info->panel_nb);
 
-	info->panel_nb.notifier_call = hl7603_panel_notifier;
-	ret = mca_event_block_notify_register(MCA_EVENT_TYPE_PANEL,
-					      &info->panel_nb);
-	if (ret)
-		return dev_err_probe(&client->dev, ret,
-				     "failed to register panel notifier\n");
-
-	mca_log_info("HL7603 boost bypass ready threshold=%u mV\n",
-		     info->vout_threshold_mv);
+	mca_log_err("probe success\n");
 	return 0;
 }
 
 static void hl7603_remove(struct i2c_client *client)
 {
-	struct hl7603_dev *info = i2c_get_clientdata(client);
+	struct boost_bypass_dev *info = i2c_get_clientdata(client);
+	mca_debugfs_remove_groups(info);
 
-	if (info)
-		mca_event_block_notify_unregister(MCA_EVENT_TYPE_PANEL,
-						  &info->panel_nb);
+
+	mca_event_block_notify_unregister(MCA_EVENT_TYPE_PANEL,
+					  &info->panel_nb);
+	devm_kfree(&client->dev, info);
 }
 
 static const struct of_device_id hl7603_of_match[] = {
 	{ .compatible = "hl7603" },
 	{},
 };
-MODULE_DEVICE_TABLE(of, hl7603_of_match);
 
-static const struct i2c_device_id hl7603_id[] = {
-	{ "hl7603", 0 },
-	{},
-};
-MODULE_DEVICE_TABLE(i2c, hl7603_id);
+MODULE_DEVICE_TABLE(of, hl7603_of_match);
 
 static struct i2c_driver hl7603_driver = {
 	.driver = {
@@ -164,9 +224,9 @@ static struct i2c_driver hl7603_driver = {
 	},
 	.probe = hl7603_probe,
 	.remove = hl7603_remove,
-	.id_table = hl7603_id,
 };
 module_i2c_driver(hl7603_driver);
 
-MODULE_DESCRIPTION("Xiaomi Dada MCA HL7603 boost-bypass driver");
+MODULE_AUTHOR("lvxiaofeng <lvxiaofeng@xiaomi.com>");
+MODULE_DESCRIPTION("hl7603 boot_bypass driver");
 MODULE_LICENSE("GPL v2");

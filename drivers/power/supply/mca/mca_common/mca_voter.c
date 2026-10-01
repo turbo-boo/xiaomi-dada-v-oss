@@ -50,6 +50,7 @@ struct mca_votable {
 
 static DEFINE_SPINLOCK(mca_votable_list_lock);
 static LIST_HEAD(mca_votable_list);
+static DEFINE_MUTEX(mca_votable_create_lock);
 
 void mca_lock_votable(struct mca_votable *votable)
 {
@@ -394,6 +395,7 @@ struct mca_votable *mca_create_votable(
 			int effective_result, const char *effective_client),
 	int default_value, void *data)
 {
+	guard(mutex)(&mca_votable_create_lock);
 	struct mca_votable *votable;
 	unsigned long flags;
 
@@ -401,8 +403,22 @@ struct mca_votable *mca_create_votable(
 		return ERR_PTR(-EINVAL);
 
 	votable = mca_find_votable(name);
-	if (votable)
+	if (votable) {
+		mca_lock_votable(votable);
+		if (votable->data && votable->data != data) {
+			mca_unlock_votable(votable);
+			return ERR_PTR(-EBUSY);
+		}
+		if (votable->type != votable_type) {
+			mca_unlock_votable(votable);
+			return ERR_PTR(-EINVAL);
+		}
+		votable->callback = callback;
+		votable->data = data;
+		votable->default_value = default_value;
+		mca_unlock_votable(votable);
 		return votable;
+	}
 
 	votable = kzalloc(sizeof(*votable), GFP_KERNEL);
 	if (!votable)
@@ -431,20 +447,42 @@ EXPORT_SYMBOL(mca_create_votable);
 
 void mca_destroy_votable(struct mca_votable *votable)
 {
-	unsigned long flags;
-	int i;
-
 	if (!votable)
 		return;
-	spin_lock_irqsave(&mca_votable_list_lock, flags);
-	list_del(&votable->list);
-	spin_unlock_irqrestore(&mca_votable_list_lock, flags);
-	for (i = 0; i < votable->num_clients; i++)
-		kfree(votable->client_names[i]);
-	kfree(votable->name);
-	kfree(votable);
+	/* Consumers cache these addresses. Keep the registry entry for rebind. */
+	mca_lock_votable(votable);
+	votable->callback = NULL;
+	votable->data = NULL;
+	mca_unlock_votable(votable);
 }
 EXPORT_SYMBOL(mca_destroy_votable);
+
+void mca_release_votables(void *data)
+{
+	struct list_head *node;
+	unsigned long flags;
+
+	if (!data)
+		return;
+	spin_lock_irqsave(&mca_votable_list_lock, flags);
+	node = mca_votable_list.next;
+	while (node != &mca_votable_list) {
+		struct mca_votable *votable = list_entry(node, struct mca_votable, list);
+
+		node = node->next;
+		/* Registry nodes are stable; never hold a spinlock over a callback lock. */
+		spin_unlock_irqrestore(&mca_votable_list_lock, flags);
+		mca_lock_votable(votable);
+		if (votable->data == data) {
+			votable->callback = NULL;
+			votable->data = NULL;
+		}
+		mca_unlock_votable(votable);
+		spin_lock_irqsave(&mca_votable_list_lock, flags);
+	}
+	spin_unlock_irqrestore(&mca_votable_list_lock, flags);
+}
+EXPORT_SYMBOL(mca_release_votables);
 
 MODULE_LICENSE("GPL v2");
 MODULE_DESCRIPTION("Xiaomi MCA votable core");

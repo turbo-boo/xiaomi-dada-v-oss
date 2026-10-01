@@ -55,4 +55,6 @@ int mca_log_get_charge_boot_mode(void);
 #define mca_log_jirabot(fmt, ...) \
 	_mca_log_err("[ARCH-TF-CHARGER][" MCA_LOG_TAG "]%s:%d " fmt, __func__, __LINE__, ##__VA_ARGS__)
 
+void mca_log_charge_log_unregister(void *data);
+
 #endif /* _MCA_COMMON_MCA_LOG_H_ */

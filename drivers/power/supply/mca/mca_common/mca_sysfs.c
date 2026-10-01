@@ -215,6 +215,25 @@ int mca_sysfs_create_files(const char *dev_name,
 }
 EXPORT_SYMBOL(mca_sysfs_create_files);
 
+void mca_sysfs_remove_files(const char *dev_name,
+ struct mca_sysfs_attr_info *attr, int attr_size)
+{
+ struct mca_class_node *cls;
+ struct mca_device_node *devn;
+ int i;
+ if (!dev_name || !attr || attr_size < 0)
+  return;
+ mutex_lock(&mca_sysfs_lock);
+ cls = mca_find_class("xm_power");
+ devn = cls ? mca_find_device(cls, dev_name) : NULL;
+ mutex_unlock(&mca_sysfs_lock);
+ if (!devn)
+  return;
+ for (i = 0; i < attr_size; i++)
+  sysfs_remove_file(&devn->dev->kobj, &attr[i].attr.attr);
+}
+EXPORT_SYMBOL(mca_sysfs_remove_files);
+
 void mca_sysfs_init_attrs(struct attribute **attrs,
 			  struct mca_sysfs_attr_info *attr_info, int size)
 {
@@ -241,6 +260,17 @@ struct mca_sysfs_attr_info *mca_sysfs_lookup_attr(
 	return NULL;
 }
 EXPORT_SYMBOL(mca_sysfs_lookup_attr);
+
+#ifdef CONFIG_DEBUG_FS
+struct mca_debug_group {
+ struct list_head node;
+ struct dentry *dir;
+ struct mca_debugfs_attr_data *attrs;
+ void *data;
+};
+static LIST_HEAD(mca_debug_groups);
+static DEFINE_MUTEX(mca_debug_groups_lock);
+#endif
 
 #ifdef CONFIG_DEBUG_FS
 static int mca_debug_show(struct seq_file *s, void *unused)
@@ -297,38 +327,67 @@ static const struct file_operations mca_debug_fops = {
 #endif
 
 int mca_debugfs_create_group(const char *dir_name,
-			     struct mca_debugfs_attr_info *attr_info,
-			     int attr_size, void *dev_data)
+ struct mca_debugfs_attr_info *attr_info, int attr_size, void *dev_data)
 {
 #ifdef CONFIG_DEBUG_FS
-	struct dentry *dir;
-	struct mca_debugfs_attr_data *data;
-	int i;
-
-	if (!dir_name || !attr_info || attr_size <= 0)
-		return -EINVAL;
-	if (!mca_debug_root)
-		mca_debug_root = debugfs_create_dir(MCA_DBG_ROOT_DIR, NULL);
-	if (IS_ERR_OR_NULL(mca_debug_root))
-		return -ENOMEM;
-	dir = debugfs_create_dir(dir_name, mca_debug_root);
-	if (IS_ERR_OR_NULL(dir))
-		return -ENOMEM;
-	data = kcalloc(attr_size, sizeof(*data), GFP_KERNEL);
-	if (!data)
-		return -ENOMEM;
-	for (i = 0; i < attr_size; i++) {
-		data[i].attr_info = &attr_info[i];
-		data[i].private = dev_data;
-		debugfs_create_file(attr_info[i].file, attr_info[i].mode,
-				    dir, &data[i], &mca_debug_fops);
-	}
-	return 0;
+ struct mca_debug_group *group;
+ int i, ret = -ENOMEM;
+ if (!dir_name || !attr_info || attr_size <= 0)
+  return -EINVAL;
+ group = kzalloc(sizeof(*group), GFP_KERNEL);
+ if (!group)
+  return -ENOMEM;
+ group->attrs = kcalloc(attr_size, sizeof(*group->attrs), GFP_KERNEL);
+ if (!group->attrs) {
+  kfree(group);
+  return -ENOMEM;
+ }
+ mutex_lock(&mca_debug_groups_lock);
+ if (!mca_debug_root)
+  mca_debug_root = debugfs_create_dir(MCA_DBG_ROOT_DIR, NULL);
+ if (IS_ERR_OR_NULL(mca_debug_root))
+  goto failed;
+ group->dir = debugfs_create_dir(dir_name, mca_debug_root);
+ if (IS_ERR_OR_NULL(group->dir))
+  goto failed;
+ group->data = dev_data;
+ for (i = 0; i < attr_size; i++) {
+  group->attrs[i].attr_info = &attr_info[i];
+  group->attrs[i].private = dev_data;
+  debugfs_create_file(attr_info[i].file, attr_info[i].mode,
+   group->dir, &group->attrs[i], &mca_debug_fops);
+ }
+ list_add_tail(&group->node, &mca_debug_groups);
+ mutex_unlock(&mca_debug_groups_lock);
+ return 0;
+failed:
+ mutex_unlock(&mca_debug_groups_lock);
+ kfree(group->attrs);
+ kfree(group);
+ return ret;
 #else
-	return -EOPNOTSUPP;
+ return -EOPNOTSUPP;
 #endif
 }
 EXPORT_SYMBOL(mca_debugfs_create_group);
+
+void mca_debugfs_remove_groups(void *dev_data)
+{
+#ifdef CONFIG_DEBUG_FS
+ struct mca_debug_group *group, *next;
+ mutex_lock(&mca_debug_groups_lock);
+ list_for_each_entry_safe(group, next, &mca_debug_groups, node) {
+  if (group->data != dev_data)
+   continue;
+  list_del(&group->node);
+  debugfs_remove_recursive(group->dir);
+  kfree(group->attrs);
+  kfree(group);
+ }
+ mutex_unlock(&mca_debug_groups_lock);
+#endif
+}
+EXPORT_SYMBOL(mca_debugfs_remove_groups);
 
 static int __init mca_sysfs_init(void)
 {

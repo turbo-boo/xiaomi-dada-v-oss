@@ -34,8 +34,6 @@ _dada_mca_module_replacements = {
 _dada_mca_extra_modules = [
     "drivers/power/supply/mca/mca_hardware_monitor/mca_ibat_ocp_monitor.ko",
     "drivers/power/supply/mca/mca_platform/mca_platform_loadsw_class.ko",
-    "drivers/power/supply/mca/mca_strategy/strategy_buckchg/mca_strategy_buckchg_voter_compat.ko",
-    "drivers/power/supply/mca/mca_strategy/strategy_quickchg/mca_quickchg_voter_compat.ko",
 ]
 
 def define_dada():

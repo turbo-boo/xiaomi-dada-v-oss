@@ -264,4 +264,6 @@ void platform_fg_ops_set_first_usage_date(unsigned int ic_role,
 					  const char *date);
 void platform_fg_ops_qbg_send_chg_data(unsigned int ic_role);
 
+void platform_fg_ic_ops_unregister(unsigned int role, void *data);
+
 #endif /* _MCA_PLATFORM_PLATFORM_FG_IC_OPS_H_ */

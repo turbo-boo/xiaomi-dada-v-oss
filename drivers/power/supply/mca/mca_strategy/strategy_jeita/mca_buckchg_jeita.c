@@ -6,6 +6,8 @@
  * Use the device's DT tables, not Onyx battery limits. BAA changes termination
  * parameters by DT row index; it does not supply a replacement charge_current policy.
  */
+#include <mca/common/mca_workqueue.h>
+
 #include <linux/errno.h>
 #include <linux/module.h>
 #include <linux/mutex.h>
@@ -503,7 +505,7 @@ static void dada_jeita_stop(struct dada_jeita_data *info)
 	mutex_lock(&info->lock);
 	info->stopping = true;
 	mutex_unlock(&info->lock);
-	cancel_delayed_work_sync(&info->monitor_work);
+	mca_cancel_delayed_work_sync(&info->monitor_work);
 }
 
 static int dada_jeita_probe(struct platform_device *pdev)

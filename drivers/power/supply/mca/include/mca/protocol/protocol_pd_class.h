@@ -202,4 +202,6 @@ int protocol_class_pd_get_zimi_cypress_flag(unsigned int port_num,
 					    int *zimi_cypress_flag);
 int protocol_class_pd_get_port_num(void);
 
+void protocol_class_pd_unregister_ops(unsigned int role, void *data);
+
 #endif /* _MCA_PROTOCOL_PROTOCOL_PD_CLASS_H_ */

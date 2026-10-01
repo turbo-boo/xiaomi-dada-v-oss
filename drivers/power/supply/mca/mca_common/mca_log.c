@@ -7,6 +7,9 @@
  * newer eleventh `time_offset` sysfs entry which is not present in older
  * public MCA sources.
  */
+#include <linux/mutex.h>
+#include <mca/common/mca_callback.h>
+
 #include <linux/device.h>
 #include <linux/errno.h>
 #include <linux/init.h>
@@ -77,6 +80,8 @@ static struct mca_log_buf_info g_log;
 static struct mca_charge_log_registration
 	g_charge_log[MCA_CHARGE_LOG_ID_MAX];
 static DEFINE_SPINLOCK(g_log_lock);
+static DEFINE_MUTEX(mca_charge_log_lock);
+DEFINE_STATIC_SRCU(mca_charge_log_callbacks);
 
 static void mca_log_timestamp(char *buf, size_t size, char level,
 			      size_t *written)
@@ -216,10 +221,27 @@ void mca_log_charge_log_register(enum mca_charge_log_id_ele type,
 {
 	if (type < 0 || type >= MCA_CHARGE_LOG_ID_MAX)
 		return;
-	WRITE_ONCE(g_charge_log[type].ops, ops);
-	WRITE_ONCE(g_charge_log[type].data, data);
+	mutex_lock(&mca_charge_log_lock);
+	g_charge_log[type].ops = ops;
+	g_charge_log[type].data = data;
+	mutex_unlock(&mca_charge_log_lock);
 }
 EXPORT_SYMBOL(mca_log_charge_log_register);
+
+void mca_log_charge_log_unregister(void *data)
+{
+	int i;
+
+	mutex_lock(&mca_charge_log_lock);
+	for (i = 0; i < MCA_CHARGE_LOG_ID_MAX; i++)
+		if (g_charge_log[i].data == data) {
+			g_charge_log[i].ops = NULL;
+			g_charge_log[i].data = NULL;
+		}
+	mutex_unlock(&mca_charge_log_lock);
+	synchronize_srcu(&mca_charge_log_callbacks);
+}
+EXPORT_SYMBOL(mca_log_charge_log_unregister);
 
 int mca_log_get_charge_boot_mode(void)
 {
@@ -254,11 +276,18 @@ static const struct attribute_group mca_log_group = { .attrs = mca_log_attrs };
 
 static int mca_charge_log_dump(char *buf, bool head)
 {
+	CLASS(mca_callback, callback_scope)(&mca_charge_log_callbacks);
+
 	int i, len = 0;
 
 	for (i = 0; i < MCA_CHARGE_LOG_ID_MAX && len < PAGE_SIZE - 1; i++) {
-		struct mca_log_charge_log_ops *ops = READ_ONCE(g_charge_log[i].ops);
-		void *data = READ_ONCE(g_charge_log[i].data);
+		struct mca_log_charge_log_ops *ops;
+		void *data;
+
+		mutex_lock(&mca_charge_log_lock);
+		ops = g_charge_log[i].ops;
+		data = g_charge_log[i].data;
+		mutex_unlock(&mca_charge_log_lock);
 		int ret;
 
 		if (!ops)

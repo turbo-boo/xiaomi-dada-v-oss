@@ -22,4 +22,6 @@ int mca_adsp_glink_qbg_read_prop(int prop_id, void *value, size_t size);
 int mca_adsp_glink_qbg_resister_ops(struct mca_adsp_glink_ops *ops,
 				    void *priv);
 
+void mca_adsp_glink_unregister_ops(void *priv);
+
 #endif /* _MCA_COMMON_MCA_ADSP_GLINK_H_ */

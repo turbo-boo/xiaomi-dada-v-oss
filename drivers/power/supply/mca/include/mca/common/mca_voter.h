@@ -40,5 +40,6 @@ struct mca_votable *mca_create_votable(
 			int effective_result, const char *effective_client),
 	int default_value, void *data);
 void mca_destroy_votable(struct mca_votable *votable);
+void mca_release_votables(void *data);
 
 #endif /* _MCA_COMMON_MCA_VOTER_H_ */

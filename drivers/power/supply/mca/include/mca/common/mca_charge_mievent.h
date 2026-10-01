@@ -1,8 +1,8 @@
 #ifndef _MCA_COMMON_MCA_CHARGE_MIEVENT_H_
 #define _MCA_COMMON_MCA_CHARGE_MIEVENT_H_
 
-#include <linux/time64.h>
 #include <linux/types.h>
+#include <linux/time64.h>
 
 #define CHARGE_MIEVENT_MAX_PARA_NUM 16
 #define CHARGE_MIEVENT_PARA_NAME_LEN 30
@@ -76,13 +76,7 @@ enum charge_mievent_type_num_ele {
 	MIEVENT_CODE_BATTERY_HSCD = 909014005,
 };
 
-enum charge_mievent_state_ele {
-	MIEVENT_STATE_PLUG,
-	MIEVENT_STATE_END,
-	MIEVENT_STATE_MAX,
-};
-
-/* Stable positional indices used by the Xiaomi MCA policy layers. */
+/* Positional index into g_charge_mievent_info[] - order MUST match the .c table. */
 enum charge_mievent_type_index {
 	CHARGE_DFX_PD_AUTH_FAILED = 0,
 	CHARGE_DFX_CP_OPEN_FAILED,
@@ -137,7 +131,113 @@ enum charge_mievent_type_index {
 	CHARGE_DFX_MAX_NUM,
 };
 
+enum charge_mievent_state_ele {
+	MIEVENT_STATE_PLUG,
+	MIEVENT_STATE_END,
+	MIEVENT_STATE_MAX,
+};
+
+enum charge_mievent_upload_type_ele {
+	MIEVENT_UPLOAD_TYPE_PLUG = 0,
+	MIEVENT_UPLOAD_TYPE_TIME,
+	MIEVENT_UPLOAD_TYPE_MAX,
+};
+
+enum mievent_upload_type_plug_ele {
+	PLUG_TYPE_PD_AUTH_FAILED = 0,
+	PLUG_TYPE_CP_OPEN_FAILED,
+	PLUG_TYPE_NOT_STANDARD_ADAPTER,
+	PLUG_TYPE_RP_SHORT_VBUS_DETECTED,
+	PLUG_TYPE_LPD_DETECTED,
+	PLUG_TYPE_CP_VBUS_OVP,
+	PLUG_TYPE_CP_IBUS_OCP,
+	PLUG_TYPE_CP_VBAT_OVP,
+	PLUG_TYPE_CP_IBAT_OCP,
+	PLUG_TYPE_CP_VAC_OVP,
+	PLUG_TYPE_ANTI_BURN_TRIGGERED,
+	PLUG_TYPE_SOC_NOT_FULL,
+	PLUG_TYPE_SMART_ENDURANCE_TRIGGERED,
+	PLUG_TYPE_SMART_NAVIGATION_TRIGGERED,
+	PLUG_TYPE_BATTERY_MISSING,
+	PLUG_TYPE_CP_TDIE_HOT,
+	PLUG_TYPE_VBUS_UVLO,
+	PLUG_TYPE_LOW_TEMP_DISCHARGING,
+	PLUG_TYPE_HIGH_TEMP_DISCHARGING,
+	PLUG_TYPE_DUAL_BATTERY_MISSING,
+	PLUG_TYPE_SMART_ENDURANCE_SOC_ERR,
+	PLUG_TYPE_SMART_NAVIGATION_SOC_ERR,
+	PLUG_TYPE_BATTERY_AUTH_FAIL,
+	PLUG_TYPE_DUAL_BATTERY_AUTH_FAIL,
+	PLUG_TYPE_ANTIBURN_ERR,
+	PLUG_TYPE_WLS_FASTCHG_FAIL,
+	PLUG_TYPE_WLS_FOD_LOW_POWER,
+	PLUG_TYPE_WLS_RX_OTP,
+	PLUG_TYPE_WLS_RX_OVP,
+	PLUG_TYPE_WLS_RX_OCP,
+	PLUG_TYPE_WLS_TRX_FOD,
+	PLUG_TYPE_WLS_TRX_OCP,
+	PLUG_TYPE_WLS_TRX_UVLO,
+	PLUG_TYPE_WLS_TRX_IIC_ERR,
+	PLUG_TYPE_WLS_RX_IIC_ERR,
+	PLUG_TYPE_LOAD_SWITCH_I2C_ERR,
+	PLUG_TYPE_WLS_FW_UPGRADE_FAIL,
+	PLUG_TYPE_BATTERY_OCD,
+	PLUG_TYPE_BATTERY_CUV,
+	PLUG_TYPE_BATTERY_HSCD,
+	PLUG_TYPE_CHARGE_SLOWLY,
+	PLUG_TYPE_NON_STANDARD_CHARGER,
+	PLUG_TYPE_MAX_NUM,
+};
+
+enum cp_i2c_err_ele {
+	CP_IIC_ERROR_PARAM_MASTER,
+	CP_IIC_ERROR_PARAM_SLAVE,
+	CP_IIC_ERROR_PARAM_MAX,
+};
+
+enum mievent_upload_type_time_ele {
+	TIME_TYPE_BATTERY_CYCLECOUNT = 0,
+	TIME_TYPE_FG_IIC_ERR,
+	TIME_TYPE_CP_ABSENT,
+	TIME_TYPE_VBATT_SOC_NOT_MATCH,
+	TIME_TYPE_BATTERY_TEMP_HOT,
+	TIME_TYPE_BATTERY_TEMP_COLD,
+	TIME_TYPE_BATTERY_VOLTAGE_DIFFER,
+	TIME_TYPE_WLS_MAGNETIC_CASE_ATTACH,
+	TIME_TYPE_MAX_NUM,
+};
+
+enum charge_mievent_data_type_ele {
+	MIEVENT_DATA_TYPE_INT,
+	MIEVENT_DATA_TYPE_STRING,
+	MIEVENT_DATA_TYPE_NULL,
+	MIEVENT_DATA_TYPE_MAX,
+};
+
+struct mievent_upload_type_plug {
+	int max_count;
+	int count;
+};
+
+struct mievent_upload_type_time {
+	time64_t time_last;
+	int time_interval;
+	int count;
+};
+
+struct charge_mievent_info {
+	int event_code;
+	const char event_type[CHARGE_MIEVENT_PARA_NAME_LEN];
+	const char event_describe[CHARGE_MIEVENT_PARA_NAME_LEN];
+	int upload_type;
+	int type_index;
+	int data_type;
+	int data_count;
+	const char para_name[CHARGE_MIEVENT_MAX_PARA_NUM]
+			    [CHARGE_MIEVENT_PARA_NAME_LEN];
+};
+
 void mca_charge_mievent_report(int event_index, void *data, int size);
 void mca_charge_mievent_set_state(enum charge_mievent_state_ele state, int value);
 
-#endif
+#endif /* _MCA_COMMON_MCA_CHARGE_MIEVENT_H_ */

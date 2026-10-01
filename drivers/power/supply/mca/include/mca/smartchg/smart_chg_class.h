@@ -3,50 +3,7 @@
 
 #include <linux/types.h>
 
-struct smart_batt_spec_curve {
-	int mv;
-	int ma_h;
-	int ma_l;
-};
-
-struct smart_batt_jeita_term_para {
-	struct {
-		int idx;
-		int min;
-		int max;
-	} t_range;
-	int vterm;
-	int iterm;
-};
-
-/* Serialized BASP record: 24-byte fixed header followed by curve entries. */
-struct smart_batt_spec {
-	u32 type;
-	u32 ffc;
-	struct {
-		int idx;
-		int min;
-		int max;
-	} t_range;
-	u32 step_size;
-	struct smart_batt_spec_curve steps[];
-};
-
-/*
- * Dada stock wire order, verified from mca_smart_charge.ko:
- * checksum is byte 0, total_len byte 8, payload starts at byte 36.
- */
-struct smart_basp_header {
-	u32 checksum;
-	u32 type;
-	u32 total_len;
-	u32 jeita_ffc_term_size;
-	u32 jeita_normal_term_size;
-	u32 wired_ffc_size;
-	u32 wired_normal_size;
-	u32 wls_ffc_size;
-	u32 wls_normal_size;
-};
+#include <mca/smartchg/basp_wire.h>
 
 enum mca_smartchg_if_chg_type {
 	MCA_SMARTCHG_IF_CHG_TYPE_BUCK = 0,

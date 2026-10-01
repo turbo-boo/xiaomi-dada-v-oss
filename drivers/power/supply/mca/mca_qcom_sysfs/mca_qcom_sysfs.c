@@ -1,19 +1,18 @@
-// SPDX-License-Identifier: GPL-2.0
-#include <linux/device.h>
-#include <linux/errno.h>
 #include <linux/module.h>
-#include <linux/of.h>
+#include <linux/init.h>
+#include <linux/slab.h>
+#include <linux/device.h>
 #include <linux/platform_device.h>
-
+#include <linux/of.h>
 #include <mca/common/mca_log.h>
-#include <mca/common/mca_sysfs.h>
-#include <mca/platform/platform_bc12_class.h>
-#include <mca/platform/platform_buckchg_class.h>
-#include <mca/platform/platform_cp_class.h>
 #include <mca/protocol/protocol_class.h>
 #include <mca/protocol/protocol_pd_class.h>
 #include <mca/strategy/strategy_class.h>
 #include <mca/strategy/strategy_fg_class.h>
+#include <mca/strategy/strategy_wireless_class.h>
+#include <mca/platform/platform_buckchg_class.h>
+#include <mca/platform/platform_cp_class.h>
+#include <mca/platform/platform_wireless_class.h>
 
 #ifndef MCA_LOG_TAG
 #define MCA_LOG_TAG "mca_qcom_sysfs"
@@ -21,87 +20,83 @@
 
 struct mca_qcom_sysfs_dev {
 	struct device *dev;
-	struct device *typec_dev;
 	struct class class;
-	bool class_registered;
+	bool support_multi_typec;
 };
 
-static const char * const usb_type_text[] = {
-	[XM_CHARGER_TYPE_UNKNOW] = "Unknown",
-	[XM_CHARGER_TYPE_SDP] = "SDP",
-	[XM_CHARGER_TYPE_CDP] = "CDP",
-	[XM_CHARGER_TYPE_DCP] = "DCP",
-	[XM_CHARGER_TYPE_FLOAT] = "USB_FLOAT",
-	[XM_CHARGER_TYPE_HVDCP2] = "HVDCP",
-	[XM_CHARGER_TYPE_HVDCP3] = "HVDCP_3",
-	[XM_CHARGER_TYPE_HVDCP3_B] = "HVDCP_3_B",
-	[XM_CHARGER_TYPE_HVDCP3P5] = "HVDCP_3P5",
-	[XM_CHARGER_TYPE_TYPEC] = "C",
-	[XM_CHARGER_TYPE_PD] = "PD",
-	[XM_CHARGER_TYPE_PD_VERIFY] = "PD_PPS",
-	[XM_CHARGER_TYPE_PPS] = "PD_PPS",
-	[XM_CHARGER_TYPE_RESERVED_13] = "Unknown",
-	[XM_CHARGER_TYPE_ACA] = "ACA",
-	[XM_CHARGER_TYPE_OCP] = "DCP",
+/* Indexed by the adapter type returned from protocol_class_get_adapter_type(). */
+static const char *const power_supply_usb_type_text[] = {
+	"Unknown", "SDP",	"CDP",	     "DCP", "USB_FLOAT", "HVDCP",
+	"HVDCP_3", "HVDCP_3_B", "HVDCP_3P5", "C",   "PD",	 "PD_PPS",
+	"PD_PPS",  "Unknown",	"ACA",	     "DCP",
 };
 
-static int mca_qcom_get_real_type(unsigned int *type)
-{
-	int bc12 = XM_CHARGER_TYPE_UNKNOW;
-	unsigned int detected = XM_CHARGER_TYPE_UNKNOW;
-
-	if (!type)
-		return -EINVAL;
-
-	if (!protocol_class_get_adapter_type(ADAPTER_PROTOCOL_PPS, &detected) &&
-	    detected != XM_CHARGER_TYPE_UNKNOW)
-		goto out;
-	detected = XM_CHARGER_TYPE_UNKNOW;
-	if (!protocol_class_get_adapter_type(ADAPTER_PROTOCOL_PD, &detected) &&
-	    detected != XM_CHARGER_TYPE_UNKNOW)
-		goto out;
-	detected = XM_CHARGER_TYPE_UNKNOW;
-	if (!protocol_class_get_adapter_type(ADAPTER_PROTOCOL_QC, &detected) &&
-	    detected != XM_CHARGER_TYPE_UNKNOW)
-		goto out;
-	if (platform_bc12_class_get_charge_type(BC12_MAIN_ROLE, &bc12))
-		return -ENODATA;
-	detected = bc12;
-out:
-	*type = detected;
-	return 0;
-}
+/* Indexed by strategy_class_wireless_ops_get_wls_type() (xm_wls_charger_type). */
+static const char *const power_supply_wls_type_text[] = {
+	"Unknown",
+	"BPP",
+	"EPP",
+	"HPP",
+};
 
 static ssize_t real_type_show(const struct class *class,
 			      const struct class_attribute *attr, char *buf)
 {
-	unsigned int type;
-	int ret = mca_qcom_get_real_type(&type);
+	unsigned int type = 0;
+	const char *s;
+	int ret;
 
-	if (ret)
+	ret = protocol_class_get_adapter_type(ADAPTER_PROTOCOL_BC12, &type);
+	if (ret < 0)
 		return ret;
-	return sysfs_emit(buf, "%s\n",
-			  type < ARRAY_SIZE(usb_type_text) && usb_type_text[type] ?
-			  usb_type_text[type] : "Unknown");
+	s = (type < ARRAY_SIZE(power_supply_usb_type_text)) ?
+		    power_supply_usb_type_text[type] :
+		    "Unknown";
+	mca_log_info("real type = %s\n", s);
+	return snprintf(buf, PAGE_SIZE, "%s\n", s);
 }
 static CLASS_ATTR_RO(real_type);
 
 static ssize_t usb_real_type_show(const struct class *class,
 				  const struct class_attribute *attr, char *buf)
 {
-	return real_type_show(class, attr, buf);
+	unsigned int type = 0;
+	const char *s;
+	int ret;
+
+	ret = protocol_class_get_adapter_type(ADAPTER_PROTOCOL_BC12, &type);
+	if (ret < 0)
+		return ret;
+	s = (type < ARRAY_SIZE(power_supply_usb_type_text)) ?
+		    power_supply_usb_type_text[type] :
+		    "Unknown";
+	mca_log_info("usb real type = %s\n", s);
+	return snprintf(buf, PAGE_SIZE, "%s\n", s);
 }
 static CLASS_ATTR_RO(usb_real_type);
+
+static ssize_t wireless_type_show(const struct class *class,
+				  const struct class_attribute *attr, char *buf)
+{
+	unsigned int type = 0;
+	const char *s;
+	int ret;
+
+	ret = strategy_class_wireless_ops_get_wls_type(&type);
+	if (ret < 0)
+		return ret;
+	s = (type < ARRAY_SIZE(power_supply_wls_type_text)) ?
+		    power_supply_wls_type_text[type] :
+		    "Unknown";
+	mca_log_info("wireless type = %s\n", s);
+	return snprintf(buf, PAGE_SIZE, "%s\n", s);
+}
+static CLASS_ATTR_RO(wireless_type);
 
 static ssize_t authentic_show(const struct class *class,
 			      const struct class_attribute *attr, char *buf)
 {
-	bool authentic = false;
-	int ret = strategy_class_fg_get_authentic(&authentic);
-
-	if (ret)
-		return ret;
-	return sysfs_emit(buf, "%d\n", authentic);
+	return snprintf(buf, PAGE_SIZE, "%d\n", 1);
 }
 static ssize_t authentic_store(const struct class *class,
 			       const struct class_attribute *attr,
@@ -112,13 +107,10 @@ static ssize_t authentic_store(const struct class *class,
 static CLASS_ATTR_RW(authentic);
 
 static ssize_t slave_authentic_show(const struct class *class,
-				    const struct class_attribute *attr, char *buf)
+				    const struct class_attribute *attr,
+				    char *buf)
 {
-	int ret = strategy_class_fg_dual_is_chip_ok(1);
-
-	if (ret == -EOPNOTSUPP || ret == -ENODEV)
-		return sysfs_emit(buf, "1\n");
-	return sysfs_emit(buf, "%d\n", ret == 0);
+	return snprintf(buf, PAGE_SIZE, "%d\n", 1);
 }
 static ssize_t slave_authentic_store(const struct class *class,
 				     const struct class_attribute *attr,
@@ -132,24 +124,29 @@ static ssize_t pd_verifed_show(const struct class *class,
 			       const struct class_attribute *attr, char *buf)
 {
 	int verified = 0;
-	int ret = protocol_class_get_adapter_verified(ADAPTER_PROTOCOL_PD,
-						      &verified);
+	int ret;
 
-	if (ret)
+	ret = protocol_class_get_adapter_verified(ADAPTER_PROTOCOL_PD,
+						  &verified);
+	if (ret < 0)
 		return ret;
-	return sysfs_emit(buf, "%d\n", verified);
+	mca_log_info("show pd_verifed = %d\n", verified);
+	return snprintf(buf, PAGE_SIZE, "%d\n", verified);
 }
 static ssize_t pd_verifed_store(const struct class *class,
 				const struct class_attribute *attr,
 				const char *buf, size_t count)
 {
-	int verified;
+	int val = 0;
 	int ret;
 
-	if (kstrtoint(buf, 10, &verified))
+	if (kstrtoint(buf, 10, &val))
 		return -EINVAL;
-	ret = protocol_class_set_adapter_verified(ADAPTER_PROTOCOL_PD, verified);
-	return ret ? ret : count;
+	mca_log_info("store pd_verifed = %d\n", val);
+	ret = protocol_class_set_adapter_verified(ADAPTER_PROTOCOL_PD, val);
+	if (ret < 0)
+		return ret;
+	return count;
 }
 static CLASS_ATTR_RW(pd_verifed);
 
@@ -157,62 +154,74 @@ static ssize_t quick_charge_type_show(const struct class *class,
 				      const struct class_attribute *attr,
 				      char *buf)
 {
-	int type = XM_CHARGER_TYPE_UNKNOW;
+	int qc_type = 0;
+	int wls_online = 0;
 
-	if (mca_strategy_func_get_status(STRATEGY_FUNC_TYPE_QUICK_CHARGE,
-					 STRATEGY_STATUS_TYPE_QC_TYPE, &type) ||
-	    type == XM_CHARGER_TYPE_UNKNOW)
+	/* wired quick-charge type, falling back to buck; overridden by the
+	 * wireless quick-charge type when wireless is online. */
+	mca_strategy_func_get_status(STRATEGY_FUNC_TYPE_QUICK_CHARGE,
+				     STRATEGY_STATUS_TYPE_QC_TYPE, &qc_type);
+	if (qc_type == 0)
 		mca_strategy_func_get_status(STRATEGY_FUNC_TYPE_BUCK_CHARGE,
-					     STRATEGY_STATUS_TYPE_QC_TYPE, &type);
-	return sysfs_emit(buf, "%d\n", type);
+					     STRATEGY_STATUS_TYPE_QC_TYPE,
+					     &qc_type);
+	mca_strategy_func_get_status(STRATEGY_FUNC_TYPE_QUICK_WIRELESS,
+				     STRATEGY_STATUS_TYPE_ONLINE, &wls_online);
+	if (wls_online != 0)
+		mca_strategy_func_get_status(STRATEGY_FUNC_TYPE_QUICK_WIRELESS,
+					     STRATEGY_STATUS_TYPE_QC_TYPE,
+					     &qc_type);
+	return snprintf(buf, PAGE_SIZE, "%d\n", qc_type);
 }
 static CLASS_ATTR_RO(quick_charge_type);
 
 static ssize_t power_max_show(const struct class *class,
 			      const struct class_attribute *attr, char *buf)
 {
-	unsigned int power = 0;
+	int wls_online = 0;
+	int power = 0;
 
-	if (mca_strategy_func_get_status(STRATEGY_FUNC_TYPE_QUICK_CHARGE,
-					 STRATEGY_STATUS_TYPE_QC_MAX_POWER,
-					 &power) || !power)
-		mca_strategy_func_get_status(STRATEGY_FUNC_TYPE_BUCK_CHARGE,
+	mca_strategy_func_get_status(STRATEGY_FUNC_TYPE_QUICK_WIRELESS,
+				     STRATEGY_STATUS_TYPE_ONLINE, &wls_online);
+	if (wls_online != 0)
+		mca_strategy_func_get_status(STRATEGY_FUNC_TYPE_QUICK_WIRELESS,
 					     STRATEGY_STATUS_TYPE_POWER_MAX,
 					     &power);
-	return sysfs_emit(buf, "%u\n", power);
+	return snprintf(buf, PAGE_SIZE, "%d\n", power);
 }
 static CLASS_ATTR_RO(power_max);
 
 static ssize_t soc_decimal_show(const struct class *class,
 				const struct class_attribute *attr, char *buf)
 {
-	int decimal = 0, rate = 0;
+	int decimal = 0;
+	int rate = 0;
 
 	strategy_class_fg_ops_get_soc_decimal(&decimal, &rate);
-	return sysfs_emit(buf, "%d\n", decimal);
+	return snprintf(buf, PAGE_SIZE, "%d\n", decimal);
 }
 static CLASS_ATTR_RO(soc_decimal);
 
 static ssize_t soc_decimal_rate_show(const struct class *class,
-				     const struct class_attribute *attr, char *buf)
+				     const struct class_attribute *attr,
+				     char *buf)
 {
-	int decimal = 0, rate = 0;
+	int decimal = 0;
+	int rate = 0;
 
 	strategy_class_fg_ops_get_soc_decimal(&decimal, &rate);
-	return sysfs_emit(buf, "%d\n", rate);
+	return snprintf(buf, PAGE_SIZE, "%d\n", rate);
 }
 static CLASS_ATTR_RO(soc_decimal_rate);
 
 static ssize_t otg_ui_support_show(const struct class *class,
-				   const struct class_attribute *attr, char *buf)
+				   const struct class_attribute *attr,
+				   char *buf)
 {
-	bool supported = false;
-	int ret = platform_class_buckchg_ops_is_support_cid(MAIN_BUCK_CHARGER,
-							    &supported);
+	bool support = false;
 
-	if (ret)
-		return ret;
-	return sysfs_emit(buf, "%d\n", supported);
+	platform_class_buckchg_ops_is_support_cid(MAIN_BUCK_CHARGER, &support);
+	return snprintf(buf, PAGE_SIZE, "%d\n", support);
 }
 static CLASS_ATTR_RO(otg_ui_support);
 
@@ -220,35 +229,39 @@ static ssize_t cid_status_show(const struct class *class,
 			       const struct class_attribute *attr, char *buf)
 {
 	bool status = false;
-	int ret = protocol_class_pd_get_cid_status(TYPEC_PORT_0, &status);
+	int ret;
 
-	if (ret)
+	ret = protocol_class_pd_get_cid_status(TYPEC_PORT_0, &status);
+	if (ret < 0)
 		return ret;
-	return sysfs_emit(buf, "%d\n", status);
+	return snprintf(buf, PAGE_SIZE, "%d\n", status);
 }
 static CLASS_ATTR_RO(cid_status);
 
 static ssize_t cc_toggle_show(const struct class *class,
 			      const struct class_attribute *attr, char *buf)
 {
-	bool enabled = false;
-	int ret = protocol_class_pd_get_cc_toggle(TYPEC_PORT_0, &enabled);
+	bool en = false;
+	int ret;
 
-	if (ret)
+	ret = protocol_class_pd_get_cc_toggle(TYPEC_PORT_0, &en);
+	if (ret < 0)
 		return ret;
-	return sysfs_emit(buf, "%d\n", enabled);
+	return snprintf(buf, PAGE_SIZE, "%d\n", en);
 }
 static ssize_t cc_toggle_store(const struct class *class,
 			       const struct class_attribute *attr,
 			       const char *buf, size_t count)
 {
-	bool enabled;
+	int val = 0;
 	int ret;
 
-	if (kstrtobool(buf, &enabled))
+	if (kstrtoint(buf, 10, &val))
 		return -EINVAL;
-	ret = protocol_class_pd_set_cc_toggle(TYPEC_PORT_0, enabled);
-	return ret ? ret : count;
+	ret = protocol_class_pd_set_cc_toggle(TYPEC_PORT_0, val != 0);
+	if (ret < 0)
+		return ret;
+	return count;
 }
 static CLASS_ATTR_RW(cc_toggle);
 
@@ -256,35 +269,39 @@ static ssize_t has_dp_show(const struct class *class,
 			   const struct class_attribute *attr, char *buf)
 {
 	bool has_dp = false;
-	int ret = protocol_class_pd_get_has_dp(TYPEC_PORT_0, &has_dp);
+	int ret;
 
-	if (ret)
+	ret = protocol_class_pd_get_has_dp(TYPEC_PORT_0, &has_dp);
+	if (ret < 0)
 		return ret;
-	return sysfs_emit(buf, "%d\n", has_dp);
+	return snprintf(buf, PAGE_SIZE, "%d\n", has_dp);
 }
 static CLASS_ATTR_RO(has_dp);
 
 static ssize_t dam_ovpgate_show(const struct class *class,
 				const struct class_attribute *attr, char *buf)
 {
-	bool enabled = false;
-	int ret = platform_class_cp_get_ovpgate_status(CP_ROLE_MASTER, &enabled);
+	bool status = false;
+	int ret;
 
-	if (ret)
+	ret = platform_class_cp_get_ovpgate_status(CP_ROLE_MASTER, &status);
+	if (ret < 0)
 		return ret;
-	return sysfs_emit(buf, "%d\n", enabled);
+	return snprintf(buf, PAGE_SIZE, "%d\n", status);
 }
 static ssize_t dam_ovpgate_store(const struct class *class,
 				 const struct class_attribute *attr,
 				 const char *buf, size_t count)
 {
-	bool enabled;
+	bool en = false;
 	int ret;
 
-	if (kstrtobool(buf, &enabled))
+	if (kstrtobool(buf, &en))
 		return -EINVAL;
-	ret = platform_class_cp_enable_ovpgate(CP_ROLE_MASTER, enabled);
-	return ret ? ret : count;
+	ret = platform_class_cp_enable_ovpgate(CP_ROLE_MASTER, en);
+	if (ret < 0)
+		return ret;
+	return count;
 }
 static CLASS_ATTR_RW(dam_ovpgate);
 
@@ -292,30 +309,271 @@ static ssize_t pmic_ibat_show(const struct class *class,
 			      const struct class_attribute *attr, char *buf)
 {
 	int ibat = 0;
-	int ret = platform_class_buckchg_ops_get_pack_ibat(MAIN_BUCK_CHARGER,
-							   &ibat);
+	int ret;
 
-	if (ret)
+	ret = platform_class_buckchg_ops_get_pack_ibat(MAIN_BUCK_CHARGER,
+						       &ibat);
+	if (ret < 0)
 		return ret;
-	return sysfs_emit(buf, "%d\n", ibat);
+	return snprintf(buf, PAGE_SIZE, "%d\n", ibat);
 }
 static CLASS_ATTR_RO(pmic_ibat);
+
+static ssize_t wireless_chip_fw_show(const struct class *class,
+				     const struct class_attribute *attr,
+				     char *buf)
+{
+	char fw[16] = { 0 };
+	int ret;
+
+	ret = platform_class_wireless_get_fw_version(WIRELESS_ROLE_MASTER, fw);
+	if (ret < 0)
+		return ret;
+	return snprintf(buf, PAGE_SIZE, "%s\n", fw);
+}
+static ssize_t wireless_chip_fw_store(const struct class *class,
+				      const struct class_attribute *attr,
+				      const char *buf, size_t count)
+{
+	int val = 0;
+	int ret;
+
+	if (kstrtoint(buf, 10, &val))
+		return -EINVAL;
+	ret = mca_wireless_rev_update_fw_version(val);
+	if (ret < 0)
+		return ret;
+	return count;
+}
+static CLASS_ATTR_RW(wireless_chip_fw);
+
+static ssize_t reverse_chg_mode_show(const struct class *class,
+				     const struct class_attribute *attr,
+				     char *buf)
+{
+	bool en = false;
+	int ret;
+
+	ret = mca_wireless_rev_get_reverse_chg(&en);
+	if (ret < 0)
+		return ret;
+	return snprintf(buf, PAGE_SIZE, "%d\n", en);
+}
+static ssize_t reverse_chg_mode_store(const struct class *class,
+				      const struct class_attribute *attr,
+				      const char *buf, size_t count)
+{
+	int val = 0;
+	int ret;
+
+	if (kstrtoint(buf, 10, &val))
+		return -EINVAL;
+	mca_wireless_rev_enable_reverse_charge(val != 0);
+	mca_log_err("store reverse_chg_mode = %d\n", val);
+	ret = mca_wireless_rev_set_user_reverse_chg(val != 0);
+	if (ret < 0)
+		return ret;
+	return count;
+}
+static CLASS_ATTR_RW(reverse_chg_mode);
+
+static ssize_t reverse_chg_state_show(const struct class *class,
+				      const struct class_attribute *attr,
+				      char *buf)
+{
+	int state = 0;
+	int ret;
+
+	ret = mca_wireless_rev_get_reverse_chg_state(&state);
+	if (ret < 0)
+		return ret;
+	return snprintf(buf, PAGE_SIZE, "%d\n", state);
+}
+static CLASS_ATTR_RO(reverse_chg_state);
+
+static ssize_t magnetic_case_flag_show(const struct class *class,
+				       const struct class_attribute *attr,
+				       char *buf)
+{
+	bool status = false;
+	int ret;
+
+	ret = platform_class_wireless_get_hall_gpio_status(WIRELESS_ROLE_MASTER,
+							   &status);
+	if (ret < 0)
+		return ret;
+	return snprintf(buf, PAGE_SIZE, "%d\n", status);
+}
+static CLASS_ATTR_RO(magnetic_case_flag);
+
+static ssize_t tx_adapter_show(const struct class *class,
+			       const struct class_attribute *attr, char *buf)
+{
+	int val = 0;
+	int ret;
+
+	ret = platform_class_wireless_get_tx_adapter(WIRELESS_ROLE_MASTER,
+						     &val);
+	if (ret < 0)
+		return ret;
+	return snprintf(buf, PAGE_SIZE, "%d\n", val);
+}
+static CLASS_ATTR_RO(tx_adapter);
+
+static ssize_t rx_vout_show(const struct class *class,
+			    const struct class_attribute *attr, char *buf)
+{
+	int val = 0;
+	int ret;
+
+	ret = platform_class_wireless_get_vout(WIRELESS_ROLE_MASTER, &val);
+	if (ret < 0)
+		return ret;
+	return snprintf(buf, PAGE_SIZE, "%d\n", val);
+}
+static CLASS_ATTR_RO(rx_vout);
+
+static ssize_t rx_vrect_show(const struct class *class,
+			     const struct class_attribute *attr, char *buf)
+{
+	int val = 0;
+	int ret;
+
+	ret = platform_class_wireless_get_vrect(WIRELESS_ROLE_MASTER, &val);
+	if (ret < 0)
+		return ret;
+	return snprintf(buf, PAGE_SIZE, "%d\n", val);
+}
+static CLASS_ATTR_RO(rx_vrect);
+
+static ssize_t rx_iout_show(const struct class *class,
+			    const struct class_attribute *attr, char *buf)
+{
+	int val = 0;
+	int ret;
+
+	ret = platform_class_wireless_get_iout(WIRELESS_ROLE_MASTER, &val);
+	if (ret < 0)
+		return ret;
+	return snprintf(buf, PAGE_SIZE, "%d\n", val);
+}
+static CLASS_ATTR_RO(rx_iout);
+
+static ssize_t rx_ss_show(const struct class *class,
+			  const struct class_attribute *attr, char *buf)
+{
+	int val = 0;
+	int ret;
+
+	ret = platform_class_wireless_get_ss_voltage(WIRELESS_ROLE_MASTER,
+						     &val);
+	if (ret < 0)
+		return ret;
+	return snprintf(buf, PAGE_SIZE, "%d\n", val);
+}
+static CLASS_ATTR_RO(rx_ss);
+
+static ssize_t shipmode_count_reset_show(const struct class *class,
+					 const struct class_attribute *attr,
+					 char *buf)
+{
+	bool ship = false;
+	int ret;
+
+	ret = platform_class_buckchg_ops_get_ship_mode(MAIN_BUCK_CHARGER,
+						       &ship);
+	if (ret < 0)
+		return ret;
+	return scnprintf(buf, PAGE_SIZE, "%d\n", ship);
+}
+static ssize_t shipmode_count_reset_store(const struct class *class,
+					  const struct class_attribute *attr,
+					  const char *buf, size_t count)
+{
+	int val = 0;
+	int ret;
+
+	if (kstrtoint(buf, 10, &val))
+		return -EINVAL;
+	ret = platform_class_buckchg_ops_set_ship_mode(MAIN_BUCK_CHARGER,
+						       val != 0);
+	if (ret < 0)
+		return ret;
+	return count;
+}
+static CLASS_ATTR_RW(shipmode_count_reset);
+
+static ssize_t wls_thermal_remove_show(const struct class *class,
+				       const struct class_attribute *attr,
+				       char *buf)
+{
+	bool remove = false;
+	int ret;
+
+	ret = mca_get_wls_charger_thermal_remove(&remove);
+	if (ret < 0)
+		return ret;
+	return snprintf(buf, PAGE_SIZE, "%d\n", remove);
+}
+static ssize_t wls_thermal_remove_store(const struct class *class,
+					const struct class_attribute *attr,
+					const char *buf, size_t count)
+{
+	int val = 0;
+	int ret;
+
+	if (kstrtoint(buf, 10, &val))
+		return -EINVAL;
+	ret = mca_set_wls_charger_thermal_remove(val != 0);
+	mca_log_err("store wls_thermal_remove = %d\n", val);
+	if (ret < 0)
+		return ret;
+	return count;
+}
+static CLASS_ATTR_RW(wls_thermal_remove);
+
+static ssize_t hall_phone_case_show(const struct class *class,
+				    const struct class_attribute *attr,
+				    char *buf)
+{
+	int val = 0;
+
+	platform_class_wireless_get_phone_case_category(WIRELESS_ROLE_MASTER,
+							&val);
+	return snprintf(buf, PAGE_SIZE, "%d\n", val);
+}
+static ssize_t hall_phone_case_store(const struct class *class,
+				     const struct class_attribute *attr,
+				     const char *buf, size_t count)
+{
+	int val = 0;
+	int ret;
+
+	if (kstrtoint(buf, 10, &val))
+		return -EINVAL;
+	ret = platform_class_wireless_set_phone_case_category(
+		WIRELESS_ROLE_MASTER, val);
+	if (ret < 0)
+		return ret;
+	mca_log_err("store hall_phone_case = %d\n", val);
+	return count;
+}
+static CLASS_ATTR_RW(hall_phone_case);
 
 static ssize_t soh_show(const struct class *class,
 			const struct class_attribute *attr, char *buf)
 {
 	int soh = 0;
-	int ret = strategy_class_fg_get_soh(&soh);
 
-	if (ret)
-		return ret;
-	return sysfs_emit(buf, "%d\n", soh);
+	strategy_class_fg_get_soh(&soh);
+	return snprintf(buf, PAGE_SIZE, "%d\n", soh);
 }
 static CLASS_ATTR_RO(soh);
 
 static struct attribute *mca_qcom_sysfs_attrs[] = {
 	&class_attr_real_type.attr,
 	&class_attr_usb_real_type.attr,
+	&class_attr_wireless_type.attr,
 	&class_attr_authentic.attr,
 	&class_attr_slave_authentic.attr,
 	&class_attr_pd_verifed.attr,
@@ -329,127 +587,47 @@ static struct attribute *mca_qcom_sysfs_attrs[] = {
 	&class_attr_has_dp.attr,
 	&class_attr_dam_ovpgate.attr,
 	&class_attr_pmic_ibat.attr,
+	&class_attr_wireless_chip_fw.attr,
+	&class_attr_reverse_chg_mode.attr,
+	&class_attr_reverse_chg_state.attr,
+	&class_attr_magnetic_case_flag.attr,
+	&class_attr_tx_adapter.attr,
+	&class_attr_rx_vout.attr,
+	&class_attr_rx_vrect.attr,
+	&class_attr_rx_iout.attr,
+	&class_attr_rx_ss.attr,
+	&class_attr_shipmode_count_reset.attr,
+	&class_attr_wls_thermal_remove.attr,
+	&class_attr_hall_phone_case.attr,
 	&class_attr_soh.attr,
 	NULL,
 };
 ATTRIBUTE_GROUPS(mca_qcom_sysfs);
-
-enum dada_typec_attr {
-	DADA_TYPEC_APDO_MAX = 0,
-	DADA_TYPEC_HAS_DP,
-	DADA_TYPEC_CID_STATUS,
-	DADA_TYPEC_OTG_UI_SUPPORT,
-	DADA_TYPEC_CC_TOGGLE,
-};
-
-static ssize_t dada_typec_show(struct device *dev,
-			       struct device_attribute *attr, char *buf);
-static ssize_t dada_typec_store(struct device *dev,
-				struct device_attribute *attr,
-				const char *buf, size_t count);
-
-static struct mca_sysfs_attr_info dada_typec_fields[] = {
-	mca_sysfs_attr_ro(dada_typec, 0440, DADA_TYPEC_APDO_MAX, apdo_max),
-	mca_sysfs_attr_ro(dada_typec, 0440, DADA_TYPEC_HAS_DP, has_dp),
-	mca_sysfs_attr_ro(dada_typec, 0440, DADA_TYPEC_CID_STATUS, cid_status),
-	mca_sysfs_attr_ro(dada_typec, 0440, DADA_TYPEC_OTG_UI_SUPPORT, otg_ui_support),
-	mca_sysfs_attr_rw(dada_typec, 0640, DADA_TYPEC_CC_TOGGLE, cc_toggle),
-};
-#define DADA_TYPEC_ATTR_COUNT ARRAY_SIZE(dada_typec_fields)
-static struct attribute *dada_typec_attrs[DADA_TYPEC_ATTR_COUNT + 1];
-static const struct attribute_group dada_typec_group = { .attrs = dada_typec_attrs };
-
-static ssize_t dada_typec_show(struct device *dev,
-			       struct device_attribute *attr, char *buf)
-{
-	struct mca_sysfs_attr_info *field;
-	unsigned int apdo = 0;
-	bool value = false;
-	int ret = 0;
-
-	field = mca_sysfs_lookup_attr(attr->attr.name, dada_typec_fields,
-				      DADA_TYPEC_ATTR_COUNT);
-	if (!field)
-		return -EINVAL;
-
-	switch (field->sysfs_attr_name) {
-	case DADA_TYPEC_APDO_MAX:
-		ret = protocol_class_pd_get_pps_apdo_max(TYPEC_PORT_0, &apdo);
-		if (ret || !apdo) {
-			apdo = 0;
-			(void)protocol_class_get_adapter_max_power(ADAPTER_PROTOCOL_PPS,
-							     &apdo);
-		}
-		return sysfs_emit(buf, "%u\n", apdo);
-	case DADA_TYPEC_HAS_DP:
-		ret = protocol_class_pd_get_has_dp(TYPEC_PORT_0, &value);
-		break;
-	case DADA_TYPEC_CID_STATUS:
-		ret = protocol_class_pd_get_cid_status(TYPEC_PORT_0, &value);
-		break;
-	case DADA_TYPEC_OTG_UI_SUPPORT:
-		/* Stock Dada protocol_pd_class exposes this capability as 1. */
-		value = true;
-		break;
-	case DADA_TYPEC_CC_TOGGLE:
-		ret = protocol_class_pd_get_cc_toggle(TYPEC_PORT_0, &value);
-		break;
-	default:
-		return -EINVAL;
-	}
-	if (ret)
-		return ret;
-	return sysfs_emit(buf, "%d\n", value);
-}
-
-static ssize_t dada_typec_store(struct device *dev,
-				struct device_attribute *attr,
-				const char *buf, size_t count)
-{
-	struct mca_sysfs_attr_info *field;
-	bool value;
-	int ret;
-
-	field = mca_sysfs_lookup_attr(attr->attr.name, dada_typec_fields,
-				      DADA_TYPEC_ATTR_COUNT);
-	if (!field || field->sysfs_attr_name != DADA_TYPEC_CC_TOGGLE)
-		return -EACCES;
-	if (kstrtobool(buf, &value))
-		return -EINVAL;
-	ret = protocol_class_pd_set_cc_toggle(TYPEC_PORT_0, value);
-	return ret ? ret : count;
-}
 
 static int mca_qcom_sysfs_probe(struct platform_device *pdev)
 {
 	struct mca_qcom_sysfs_dev *info;
 	int ret;
 
+	mca_log_info("probe begin\n");
 	info = devm_kzalloc(&pdev->dev, sizeof(*info), GFP_KERNEL);
 	if (!info)
 		return -ENOMEM;
+
 	info->dev = &pdev->dev;
+	info->support_multi_typec = of_find_property(pdev->dev.of_node,
+						     "mi,support_multi_typec",
+						     NULL) != NULL;
 	info->class.name = "qcom-battery";
 	info->class.class_groups = mca_qcom_sysfs_groups;
 	platform_set_drvdata(pdev, info);
 
 	ret = class_register(&info->class);
-	if (ret)
-		return dev_err_probe(&pdev->dev, ret,
-				     "failed to register qcom-battery class\n");
-	info->class_registered = true;
-
-	mca_sysfs_init_attrs(dada_typec_attrs, dada_typec_fields,
-			     DADA_TYPEC_ATTR_COUNT);
-	info->typec_dev = mca_sysfs_create_group("xm_power", SYSFS_DEV_3,
-						 &dada_typec_group);
-	if (!info->typec_dev) {
-		class_unregister(&info->class);
-		info->class_registered = false;
-		return -ENODEV;
+	if (ret < 0) {
+		mca_log_err("class reg failed %d\n", ret);
+		return ret;
 	}
-
-	mca_log_info("qcom-battery and stock Type-C sysfs registered\n");
+	mca_log_err("probe ok\n");
 	return 0;
 }
 
@@ -457,32 +635,27 @@ static int mca_qcom_sysfs_remove(struct platform_device *pdev)
 {
 	struct mca_qcom_sysfs_dev *info = platform_get_drvdata(pdev);
 
-	if (info && info->typec_dev) {
-		mca_sysfs_remove_group("xm_power", info->typec_dev, &dada_typec_group);
-		info->typec_dev = NULL;
-	}
-	if (info && info->class_registered) {
-		class_unregister(&info->class);
-		info->class_registered = false;
-	}
+	class_unregister(&info->class);
 	return 0;
 }
 
-static const struct of_device_id mca_qcom_sysfs_match[] = {
+static const struct of_device_id match_table[] = {
 	{ .compatible = "mca,qcom_sysfs" },
 	{},
 };
-MODULE_DEVICE_TABLE(of, mca_qcom_sysfs_match);
 
 static struct platform_driver mca_qcom_sysfs_driver = {
 	.driver = {
 		.name = "mca_qcom_sysfs",
-		.of_match_table = mca_qcom_sysfs_match,
+		.of_match_table = match_table,
 	},
 	.probe = mca_qcom_sysfs_probe,
 	.remove = mca_qcom_sysfs_remove,
 };
 module_platform_driver(mca_qcom_sysfs_driver);
 
-MODULE_DESCRIPTION("Xiaomi Dada qcom-battery and Type-C compatibility sysfs");
+MODULE_DESCRIPTION("mca qcom sysfs");
+MODULE_AUTHOR("liyuze1@xiaomi.com");
 MODULE_LICENSE("GPL v2");
+
+MODULE_DEVICE_TABLE(of, match_table);

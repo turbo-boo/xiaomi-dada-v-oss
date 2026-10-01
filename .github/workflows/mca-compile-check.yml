@@ -21,15 +21,19 @@ permissions:
 jobs:
   compile-mca:
     runs-on: ubuntu-24.04
-    timeout-minutes: 30
+    timeout-minutes: 90
     steps:
       - uses: actions/checkout@v4
 
-      - name: Test JEITA policy boundaries
+      - name: Test JEITA and BASP policy boundaries
         run: |
           cc -Wall -Wextra -Werror -fsanitize=address,undefined \
             -o /tmp/jeita-policy-test tools/testing/selftests/mca/jeita_policy_test.c
           /tmp/jeita-policy-test
+          cc -Wall -Wextra -Werror -fsanitize=address,undefined \
+            -o /tmp/basp-wire-test tools/testing/selftests/mca/basp_wire_test.c
+          /tmp/basp-wire-test
+          python3 tools/testing/selftests/mca/verify_dada_port.py
 
       - name: Install kernel build dependencies
         run: |
@@ -55,7 +59,22 @@ jobs:
             -m MCA_QCOM_SMEM \
             -m MCA_QCOM_SYSFS \
             -m MCA_QCOM_PANEL \
-            -m CHARGER_PARTITION
+            -m CHARGER_PARTITION \
+            -e MHI_BUS_MISC \
+            -e IPC_LOGGING \
+            -e ANDROID_VENDOR_HOOKS \
+            -e ANDROID_VENDOR_OEM_DATA \
+            -m QCOM_FSA4480_I2C \
+            -m PHY_QCOM_UFS \
+            -e QCOM_IOMMU_UTIL \
+            -d QCOM_Q6V5_MSS \
+            -d INTERCONNECT_QCOM
+          # The vendor headers no longer support the legacy upstream ICC nodes;
+          # CoreSight USB also requires a QDSS header outside this source release.
+          scripts/config --file out/.config -d CORESIGHT
+          for symbol in $(sed -n 's/^CONFIG_\(INTERCONNECT_QCOM[^=]*\)=.*/\1/p' out/.config); do
+            scripts/config --file out/.config -d "$symbol"
+          done
           make O=out ARCH=arm64 LLVM=1 olddefconfig
           grep -E 'CONFIG_(MI_HARDWARE_ID|XM_POWER_SUPPLY|MCA_PROTOCOL_PD|MCA_PROTOCOL_QC|MCA_EXTERNAL_FG|MCA_EXTERNAL_CP|MCA_EXTERNAL_WIRELESS|MCA_EXTERNAL_BOOST|MCA_QCOM_ADSP|MCA_QCOM_SUBPMIC|MCA_QCOM_SMEM|MCA_QCOM_SYSFS|MCA_QCOM_PANEL|CHARGER_PARTITION)=' out/.config
           echo '--- wireless strategy Kbuild ---'
@@ -104,6 +123,25 @@ jobs:
           fi
           exit "$status"
 
+      - name: Link full kernel and modules with resolved symbols
+        id: kernel_link
+        shell: bash
+        run: |
+          set +e
+          make -j"$(nproc)" O=out ARCH=arm64 LLVM=1 Image modules 2>&1 | tee kernel-build.log
+          status=${PIPESTATUS[0]}
+          if [ "$status" -ne 0 ]; then
+            grep -n -m 80 -E '(error:|fatal error:|ERROR:)|undefined reference|No rule to make target' kernel-build.log > mca-errors.txt || true
+            if [ ! -s mca-errors.txt ]; then
+              tail -n 200 kernel-build.log > mca-errors.txt
+            fi
+          fi
+          exit "$status"
+
+      - name: Verify packaged modules and compiled Dada bindings
+        run: |
+          python3 tools/testing/selftests/mca/verify_dada_port.py --kernel-out out
+
       - name: Assert restored MCA layers and stock module names
         if: success()
         run: |
@@ -129,7 +167,12 @@ jobs:
           test -f out/drivers/power/supply/mca/mca_strategy/strategy_pd_auth/mca_pd_auth.o
           test -f out/drivers/power/supply/mca/mca_strategy/strategy_soc_limit/mca_soc_limit.o
           test -f out/drivers/power/supply/mca/mca_strategy/strategy_thermal/mca_charger_thermal.o
-          test -f out/drivers/power/supply/mca/mca_strategy/strategy_buckchg/mca_strategy_buckchg_voter_compat.o
+          test -f out/drivers/power/supply/mca/mca_strategy/strategy_buckchg/mca_strategy_buckchg.o
+          test -f out/drivers/power/supply/mca/mca_strategy/strategy_fg/mca_soc_smooth.o
+          test -f out/drivers/power/supply/mca/mca_strategy/strategy_fg/mca_battery_shutdown.o
+          test -f out/drivers/power/supply/mca/mca_business/business_charger/mca_charger_usb_psy.o
+          test -f out/drivers/power/supply/mca/mca_business/business_charger/mca_charger_wireless_psy.o
+          test -f out/drivers/power/supply/mca/mca_business/business_battery/mca_battery_psy.o
           test -f out/drivers/power/supply/mca/mca_business/business_misc/mca_business_misc.o
           test -f out/drivers/power/supply/mca/mca_business/business_misc/mca_business_votable.o
 
@@ -168,7 +211,7 @@ jobs:
             -name 'mca_bmd.o' \) -print
 
       - name: Report compiler diagnostics to draft PR
-        if: failure() && (steps.mca_compile.outcome == 'failure' || steps.wireless_compile.outcome == 'failure')
+        if: failure() && (steps.mca_compile.outcome == 'failure' || steps.wireless_compile.outcome == 'failure' || steps.kernel_link.outcome == 'failure')
         uses: actions/github-script@v7
         with:
           script: |

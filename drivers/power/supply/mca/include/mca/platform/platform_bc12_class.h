@@ -20,4 +20,6 @@ int platform_bc12_class_ops_register(unsigned int role,
 int platform_bc12_class_det_enable(unsigned int role, int en);
 int platform_bc12_class_get_charge_type(unsigned int role, int *type);
 
+void platform_bc12_class_ops_unregister(unsigned int role, void *data);
+
 #endif

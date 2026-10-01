@@ -763,6 +763,10 @@ static int qcom_subpmic_probe(struct platform_device *pdev)
 	queue_delayed_work(system_wq, &sc->sync_cfg_work, msecs_to_jiffies(25));
 	return 0;
 err:
+	mca_adsp_glink_unregister_ops(sc);
+	platform_class_buckchg_ops_unregister(0, sc);
+	protocol_class_qc_unregister_ops(0, sc);
+	platform_bc12_class_ops_unregister(0, sc);
 	unregister_reboot_notifier(&sc->ship_mode_nb);
 	unregister_reboot_notifier(&sc->shutdown_nb);
 	return rc;
@@ -773,6 +777,10 @@ static int qcom_subpmic_remove(struct platform_device *pdev)
 	struct qcom_subpmic *sc = platform_get_drvdata(pdev);
 	if (!sc)
 		return 0;
+	mca_adsp_glink_unregister_ops(sc);
+	platform_class_buckchg_ops_unregister(0, sc);
+	protocol_class_qc_unregister_ops(0, sc);
+	platform_bc12_class_ops_unregister(0, sc);
 	cancel_delayed_work_sync(&sc->update_usb_type_work);
 	cancel_delayed_work_sync(&sc->sync_cfg_work);
 	cancel_work_sync(&sc->notify_change_work);

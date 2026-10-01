@@ -183,4 +183,6 @@ int platform_class_buckchg_ops_get_pack_tbat(unsigned int role, int *tbat);
 int platform_class_buckchg_ops_get_aicl_status(unsigned int role, int *status);
 int platform_class_buckchg_ops_set_too_hot_limit(unsigned int role, int limit);
 
+void platform_class_buckchg_ops_unregister(unsigned int role, void *data);
+
 #endif

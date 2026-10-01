@@ -69,8 +69,6 @@ jobs:
           required_extras = {
               'drivers/power/supply/mca/mca_hardware_monitor/mca_ibat_ocp_monitor.ko',
               'drivers/power/supply/mca/mca_platform/mca_platform_loadsw_class.ko',
-              'drivers/power/supply/mca/mca_strategy/strategy_buckchg/mca_strategy_buckchg_voter_compat.ko',
-              'drivers/power/supply/mca/mca_strategy/strategy_quickchg/mca_quickchg_voter_compat.ko',
           }
           missing_extras = sorted(required_extras.difference(effective))
           if missing_extras:

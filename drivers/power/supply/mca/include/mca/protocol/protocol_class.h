@@ -131,4 +131,6 @@ int protocol_class_get_adapter_info(unsigned int protocol,
 int protocol_class_get_adapter_power_curve(unsigned int protocol,
 					   struct adapter_power_curve *pwr_curve);
 
+void protocol_class_unregister_ops(unsigned int role, void *data);
+
 #endif /* _MCA_PROTOCOL_PROTOCOL_CLASS_H_ */

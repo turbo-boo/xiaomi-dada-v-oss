@@ -47,4 +47,6 @@ struct mca_charge_if_ops {
 
 int mca_charge_if_ops_register(struct mca_charge_if_ops *ops);
 
+void mca_charge_if_ops_unregister(struct mca_charge_if_ops *ops);
+
 #endif

@@ -6,6 +6,9 @@
  * owner 0x8009 for QBG. Both share the Xiaomi request/response wire ABI,
  * callback lists and link-state handling.
  */
+#include <linux/rculist.h>
+#include <mca/common/mca_callback.h>
+
 #include <linux/completion.h>
 #include <linux/errno.h>
 #include <linux/list.h>
@@ -54,6 +57,7 @@ struct mca_adsp_glink_notify_msg {
 } __packed;
 
 struct mca_adsp_ops_node {
+	struct list_head retired;
 	struct list_head node;
 	struct mca_adsp_glink_ops *ops;
 	void *priv;
@@ -74,6 +78,9 @@ struct mca_adsp_glink_dev {
 };
 
 static struct mca_adsp_glink_dev *g_mca_adsp_glink;
+static DEFINE_MUTEX(mca_glink_ops_lock);
+DEFINE_STATIC_SRCU(mca_glink_ops_callbacks);
+DEFINE_STATIC_SRCU(mca_glink_channel_callbacks);
 static LIST_HEAD(mca_ops_list);
 static LIST_HEAD(qbg_ops_list);
 
@@ -88,7 +95,9 @@ static struct pmic_glink_client *mca_adsp_client_for_owner(
 static int mca_adsp_glink_xfer(u32 owner, u32 opcode, int prop_id,
 			       void *value, size_t size)
 {
-	struct mca_adsp_glink_dev *mca = g_mca_adsp_glink;
+	CLASS(mca_callback, callback_scope)(&mca_glink_channel_callbacks);
+
+	struct mca_adsp_glink_dev *mca = READ_ONCE(g_mca_adsp_glink);
 	struct mca_adsp_glink_req_msg msg = { 0 };
 	struct pmic_glink_client *client;
 	unsigned long timeout;
@@ -190,7 +199,9 @@ static int mca_adsp_register_ops(struct list_head *head,
 		return -ENOMEM;
 	node->ops = ops;
 	node->priv = priv;
-	list_add_tail(&node->node, head);
+	mutex_lock(&mca_glink_ops_lock);
+	list_add_tail_rcu(&node->node, head);
+	mutex_unlock(&mca_glink_ops_lock);
 	return 0;
 }
 
@@ -206,12 +217,37 @@ int mca_adsp_glink_qbg_resister_ops(struct mca_adsp_glink_ops *ops, void *priv)
 }
 EXPORT_SYMBOL(mca_adsp_glink_qbg_resister_ops);
 
+void mca_adsp_glink_unregister_ops(void *priv)
+{
+	struct mca_adsp_ops_node *node, *next;
+	struct list_head *heads[] = { &mca_ops_list, &qbg_ops_list };
+	LIST_HEAD(retired);
+	int i;
+
+	mutex_lock(&mca_glink_ops_lock);
+	for (i = 0; i < ARRAY_SIZE(heads); i++)
+		list_for_each_entry_safe(node, next, heads[i], node)
+			if (node->priv == priv) {
+				list_del_rcu(&node->node);
+				list_add_tail(&node->retired, &retired);
+			}
+	mutex_unlock(&mca_glink_ops_lock);
+	synchronize_srcu(&mca_glink_ops_callbacks);
+	list_for_each_entry_safe(node, next, &retired, retired) {
+		list_del(&node->retired);
+		kfree(node);
+	}
+}
+EXPORT_SYMBOL(mca_adsp_glink_unregister_ops);
+
 static void mca_adsp_notify_list(struct list_head *head, u32 prop_id,
 				 void *data, u32 len)
 {
+	CLASS(mca_callback, callback_scope)(&mca_glink_ops_callbacks);
+
 	struct mca_adsp_ops_node *node;
 
-	list_for_each_entry(node, head, node) {
+	list_for_each_entry_rcu(node, head, node, srcu_read_lock_held(&mca_glink_ops_callbacks)) {
 		if (node->ops && node->ops->notification)
 			node->ops->notification(prop_id, data, len, node->priv);
 	}
@@ -272,9 +308,11 @@ static int mca_adsp_glink_callback(void *priv, void *data, size_t len)
 
 static void mca_adsp_state_notify(struct list_head *head, bool up)
 {
+	CLASS(mca_callback, callback_scope)(&mca_glink_ops_callbacks);
+
 	struct mca_adsp_ops_node *node;
 
-	list_for_each_entry(node, head, node) {
+	list_for_each_entry_rcu(node, head, node, srcu_read_lock_held(&mca_glink_ops_callbacks)) {
 		if (!node->ops)
 			continue;
 		if (up && node->ops->glink_state_up)
@@ -365,18 +403,20 @@ static int mca_adsp_glink_probe(struct platform_device *pdev)
 
 static int mca_adsp_glink_remove(struct platform_device *pdev)
 {
-	struct mca_adsp_glink_dev *mca = platform_get_drvdata(pdev);
-
-	if (!mca)
-		return 0;
-	cancel_work_sync(&mca->sync_work);
-	if (!IS_ERR_OR_NULL(mca->qbg_client))
-		pmic_glink_unregister_client(mca->qbg_client);
-	if (!IS_ERR_OR_NULL(mca->client))
-		pmic_glink_unregister_client(mca->client);
-	if (g_mca_adsp_glink == mca)
-		g_mca_adsp_glink = NULL;
-	return 0;
+ struct mca_adsp_glink_dev *mca = platform_get_drvdata(pdev);
+ if (!mca)
+  return 0;
+ WRITE_ONCE(g_mca_adsp_glink, NULL);
+ WRITE_ONCE(mca->glink_state, PMIC_GLINK_STATE_DOWN);
+ mca->retcode = -ENODEV;
+ complete_all(&mca->ack);
+ synchronize_srcu(&mca_glink_channel_callbacks);
+ if (!IS_ERR_OR_NULL(mca->qbg_client))
+  pmic_glink_unregister_client(mca->qbg_client);
+ if (!IS_ERR_OR_NULL(mca->client))
+  pmic_glink_unregister_client(mca->client);
+ cancel_work_sync(&mca->sync_work);
+ return 0;
 }
 
 static const struct of_device_id mca_adsp_match_table[] = {

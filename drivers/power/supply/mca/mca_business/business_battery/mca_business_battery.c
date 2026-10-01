@@ -1,278 +1,194 @@
 // SPDX-License-Identifier: GPL-2.0
 /*
- * Dada MCA battery business layer.
+ * mca_business_battery.c
  *
- * This establishes the Android/Linux battery power_supply ABI on top of the
- * restored fuel-gauge strategy. Charger-policy-specific writable controls are
- * deliberately kept out until the buck charger strategy is connected.
+ * mca battery business driver
+ *
+ * Copyright (c) 2023-2023 Xiaomi Technologies Co., Ltd.
+ *
+ * This software is licensed under the terms of the GNU General Public
+ * License version 2, as published by the Free Software Foundation, and
+ * may be copied, distributed, and modified under those terms.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+ * GNU General Public License for more details.
+ *
  */
-#include <linux/errno.h>
+#include <mca/common/mca_callback.h>
+
+#include <linux/slab.h>
 #include <linux/module.h>
+#include <linux/kernel.h>
+#include <linux/string.h>
+#include <linux/delay.h>
+#include <linux/sched.h>
+#include <linux/debugfs.h>
+#include <linux/device.h>
+#include <linux/init.h>
 #include <linux/of.h>
-#include <linux/platform_device.h>
+#include <linux/of_device.h>
+#include <linux/kthread.h>
+#include <linux/workqueue.h>
 #include <linux/power_supply.h>
-#include <mca/common/mca_event.h>
+#include <linux/platform_device.h>
+#include <mca/strategy/strategy_class.h>
 #include <mca/common/mca_log.h>
-#include <mca/strategy/strategy_fg_class.h>
+#include <mca/common/mca_event.h>
+#include <mca/common/mca_parse_dts.h>
+#include <mca/common/mca_sysfs.h>
+#include "inc/mca_business_battery.h"
+#include "inc/mca_battery_psy.h"
 
 #ifndef MCA_LOG_TAG
-#define MCA_LOG_TAG "business_battery"
+#define MCA_LOG_TAG "mca_business_battery"
 #endif
 
-struct dada_battery_business {
-	struct device *dev;
-	struct power_supply *psy;
-	struct power_supply_desc desc;
-	struct notifier_block event_nb;
-};
+DEFINE_STATIC_SRCU(mca_battery_callbacks);
+static struct business_battery *g_mca_business_battery;
 
-static enum power_supply_property dada_battery_props[] = {
-	POWER_SUPPLY_PROP_STATUS,
-	POWER_SUPPLY_PROP_HEALTH,
-	POWER_SUPPLY_PROP_PRESENT,
-	POWER_SUPPLY_PROP_CAPACITY,
-	POWER_SUPPLY_PROP_CAPACITY_LEVEL,
-	POWER_SUPPLY_PROP_VOLTAGE_NOW,
-	POWER_SUPPLY_PROP_VOLTAGE_OCV,
-	POWER_SUPPLY_PROP_CURRENT_NOW,
-	POWER_SUPPLY_PROP_TEMP,
-	POWER_SUPPLY_PROP_TECHNOLOGY,
-	POWER_SUPPLY_PROP_CHARGE_COUNTER,
-	POWER_SUPPLY_PROP_CYCLE_COUNT,
-	POWER_SUPPLY_PROP_CHARGE_FULL,
-	POWER_SUPPLY_PROP_CHARGE_FULL_DESIGN,
-	POWER_SUPPLY_PROP_MODEL_NAME,
-};
-
-static bool dada_source_online(const char *name)
+/*
+static void battery_event_process_work(struct work_struct *work)
 {
-	struct power_supply *psy;
-	union power_supply_propval pval = { 0 };
-	bool online = false;
+	struct business_battery *battery = container_of(work,
+			struct business_battery, event_process_work);
 
-	psy = power_supply_get_by_name(name);
-	if (!psy)
-		return false;
-	if (!power_supply_get_property(psy, POWER_SUPPLY_PROP_ONLINE, &pval))
-		online = !!pval.intval;
-	power_supply_put(psy);
-	return online;
+	business_battery_psy_event_process(battery->batt_psy_info);
 }
-
-static int dada_battery_get_status(union power_supply_propval *val)
+*/
+static int business_battery_event_process(struct notifier_block *nb,
+					  unsigned long event, void *data)
 {
-	int battery_current = 0;
-	int soc;
-	bool online;
+	struct business_battery *battery =
+		container_of(nb, struct business_battery, batt_info_nb);
 
-	online = dada_source_online("usb") || dada_source_online("wireless");
-	soc = strategy_class_fg_ops_get_soc();
-	if (online) {
-		if (soc == 100 && strategy_class_fg_ops_get_charging_done())
-			val->intval = POWER_SUPPLY_STATUS_FULL;
-		else
-			val->intval = POWER_SUPPLY_STATUS_CHARGING;
-		return 0;
-	}
-
-	/* Early bring-up fallback for platforms whose USB psy appears later. */
-	if (!strategy_class_fg_ops_get_current(&battery_current) &&
-	    battery_current > 0)
-		val->intval = POWER_SUPPLY_STATUS_CHARGING;
-	else
-		val->intval = POWER_SUPPLY_STATUS_DISCHARGING;
-	return 0;
-}
-
-static int dada_battery_capacity_level(int soc)
-{
-	if (soc <= 0)
-		return POWER_SUPPLY_CAPACITY_LEVEL_CRITICAL;
-	if (soc <= 20)
-		return POWER_SUPPLY_CAPACITY_LEVEL_LOW;
-	if (soc <= 80)
-		return POWER_SUPPLY_CAPACITY_LEVEL_NORMAL;
-	if (soc < 100)
-		return POWER_SUPPLY_CAPACITY_LEVEL_HIGH;
-	return POWER_SUPPLY_CAPACITY_LEVEL_FULL;
-}
-
-static int dada_battery_get_property(struct power_supply *psy,
-				     enum power_supply_property psp,
-				     union power_supply_propval *val)
-{
-	int ret = 0;
-	int soc;
-	const char *name;
-
-	switch (psp) {
-	case POWER_SUPPLY_PROP_STATUS:
-		return dada_battery_get_status(val);
-	case POWER_SUPPLY_PROP_HEALTH:
-		ret = strategy_class_fg_get_health(&val->intval);
-		if (ret)
-			val->intval = POWER_SUPPLY_HEALTH_UNKNOWN;
-		return 0;
-	case POWER_SUPPLY_PROP_PRESENT:
-		/* Dada has a non-removable single battery pack. */
-		val->intval = 1;
-		return 0;
-	case POWER_SUPPLY_PROP_CAPACITY:
-		soc = strategy_class_fg_ops_get_soc();
-		if (soc < 0 || soc > 100)
-			return -ENODATA;
-		val->intval = soc;
-		return 0;
-	case POWER_SUPPLY_PROP_CAPACITY_LEVEL:
-		soc = strategy_class_fg_ops_get_soc();
-		if (soc < 0 || soc > 100)
-			return -ENODATA;
-		val->intval = dada_battery_capacity_level(soc);
-		return 0;
-	case POWER_SUPPLY_PROP_VOLTAGE_NOW:
-	case POWER_SUPPLY_PROP_VOLTAGE_OCV:
-		ret = strategy_class_fg_ops_get_voltage(&val->intval);
-		if (!ret)
-			val->intval *= 1000; /* mV -> uV */
+	switch (event) {
+	case MCA_EVENT_BATTERY_STS_CHANGE:
+		if (!battery || !battery->batt_psy_info ||
+		    !battery->batt_psy_info->batt_psy)
+			return 0;
+		power_supply_changed(battery->batt_psy_info->batt_psy);
 		break;
-	case POWER_SUPPLY_PROP_CURRENT_NOW:
-		ret = strategy_class_fg_ops_get_current(&val->intval);
-		break;
-	case POWER_SUPPLY_PROP_TEMP:
-		ret = strategy_class_fg_ops_get_temperature(&val->intval);
-		break;
-	case POWER_SUPPLY_PROP_TECHNOLOGY:
-		val->intval = POWER_SUPPLY_TECHNOLOGY_LIPO;
-		return 0;
-	case POWER_SUPPLY_PROP_CHARGE_COUNTER:
-		ret = strategy_class_fg_get_rm(&val->intval);
-		break;
-	case POWER_SUPPLY_PROP_CYCLE_COUNT:
-		ret = strategy_class_fg_ops_get_cyclecount(&val->intval);
-		break;
-	case POWER_SUPPLY_PROP_CHARGE_FULL:
-		ret = strategy_class_fg_get_fcc(&val->intval);
-		break;
-	case POWER_SUPPLY_PROP_CHARGE_FULL_DESIGN:
-		ret = strategy_class_fg_get_dc(&val->intval);
-		break;
-	case POWER_SUPPLY_PROP_MODEL_NAME:
-		ret = strategy_class_fg_get_model_name(&name);
-		if (!ret)
-			val->strval = name;
+	case MCA_EVENT_BATTERY_FAKE_POWER:
+		battery->batt_psy_info->fake_power = *(int *)data;
+		mca_log_err("reviced fake_power event %d ",
+			    battery->batt_psy_info->fake_power);
 		break;
 	default:
-		return -EINVAL;
+		break;
 	}
 
-	return ret ? -ENODATA : 0;
-}
-
-static int dada_battery_event(struct notifier_block *nb,
-			      unsigned long event, void *data)
-{
-	struct dada_battery_business *battery =
-		container_of(nb, struct dada_battery_business, event_nb);
-
-	if (battery->psy)
-		power_supply_changed(battery->psy);
-	return NOTIFY_OK;
-}
-
-static int dada_battery_register_notifiers(struct dada_battery_business *battery)
-{
-	int ret;
-
-	battery->event_nb.notifier_call = dada_battery_event;
-	ret = mca_event_block_notify_register(MCA_EVENT_TYPE_CHARGER_CONNECT,
-					      &battery->event_nb);
-	if (ret)
-		return ret;
-	ret = mca_event_block_notify_register(MCA_EVENT_TYPE_BATTERY_INFO,
-					      &battery->event_nb);
-	if (ret)
-		goto err_charger;
-	ret = mca_event_block_notify_register(MCA_EVENT_CHARGE_STATUS,
-					      &battery->event_nb);
-	if (ret)
-		goto err_battery;
 	return 0;
-
-err_battery:
-	mca_event_block_notify_unregister(MCA_EVENT_TYPE_BATTERY_INFO,
-					  &battery->event_nb);
-err_charger:
-	mca_event_block_notify_unregister(MCA_EVENT_TYPE_CHARGER_CONNECT,
-					  &battery->event_nb);
-	return ret;
 }
 
-static void dada_battery_unregister_notifiers(struct dada_battery_business *battery)
+static int business_battery_parse_dt(struct business_battery *battery)
 {
-	mca_event_block_notify_unregister(MCA_EVENT_CHARGE_STATUS,
-					  &battery->event_nb);
-	mca_event_block_notify_unregister(MCA_EVENT_TYPE_BATTERY_INFO,
-					  &battery->event_nb);
-	mca_event_block_notify_unregister(MCA_EVENT_TYPE_CHARGER_CONNECT,
-					  &battery->event_nb);
+	struct device_node *node = battery->dev->of_node;
+
+	(void)mca_parse_dts_u32(node, "battery-core-test", &battery->dt.test,
+				0);
+	// mca_parse_dts_u32(node, "battery-resistance-id", &battery->dt.resistance_id, 0);
+
+	return 0;
 }
 
-static int dada_battery_probe(struct platform_device *pdev)
+static int business_battery_probe(struct platform_device *pdev)
 {
-	struct dada_battery_business *battery;
-	struct power_supply_config cfg = { 0 };
-	int ret;
+	struct business_battery *battery;
+	static int probe_cnt;
+	int rc = 0;
+
+	mca_log_info("probe_cnt = %d\n", ++probe_cnt);
 
 	battery = devm_kzalloc(&pdev->dev, sizeof(*battery), GFP_KERNEL);
 	if (!battery)
 		return -ENOMEM;
+
 	battery->dev = &pdev->dev;
-	battery->desc.name = "battery";
-	battery->desc.type = POWER_SUPPLY_TYPE_BATTERY;
-	battery->desc.properties = dada_battery_props;
-	battery->desc.num_properties = ARRAY_SIZE(dada_battery_props);
-	battery->desc.get_property = dada_battery_get_property;
-
-	cfg.drv_data = battery;
-	cfg.of_node = pdev->dev.of_node;
-	battery->psy = devm_power_supply_register(&pdev->dev, &battery->desc, &cfg);
-	if (IS_ERR(battery->psy))
-		return dev_err_probe(&pdev->dev, PTR_ERR(battery->psy),
-				     "failed to register battery power_supply\n");
-
 	platform_set_drvdata(pdev, battery);
-	ret = dada_battery_register_notifiers(battery);
-	if (ret)
-		mca_log_info("event notifier registration deferred: %d\n", ret);
 
-	mca_log_info("battery power_supply registered\n");
+	rc = business_battery_parse_dt(battery);
+	if (rc < 0) {
+		mca_log_err("Couldn't parse device tree rc=%d\n", rc);
+		return rc;
+	}
+
+	battery->batt_psy_info = business_battery_psy_init(battery->dev);
+	if (!battery->batt_psy_info) {
+		mca_log_err("Couldn't init battery psy\n");
+		return -1;
+	}
+
+	//INIT_WORK(&battery->event_process_work, battery_event_process_work);
+	battery->batt_info_nb.notifier_call = business_battery_event_process;
+	rc = mca_event_block_notify_register(MCA_EVENT_TYPE_BATTERY_INFO,
+					     &battery->batt_info_nb);
+	if (rc) {
+		rc = -EPROBE_DEFER;
+		mca_log_err("register notify failed\n");
+		goto error;
+	}
+
+	g_mca_business_battery = battery;
+	// business_battery_sysfs_create_files();
+
+	mca_log_err("probe ok");
+
 	return 0;
+
+error:
+	business_battery_psy_deinit(battery->batt_psy_info);
+	return rc;
 }
 
-static int dada_battery_remove(struct platform_device *pdev)
+static int business_battery_remove(struct platform_device *pdev)
 {
-	struct dada_battery_business *battery = platform_get_drvdata(pdev);
+	struct business_battery *battery = platform_get_drvdata(pdev);
 
-	if (battery)
-		dada_battery_unregister_notifiers(battery);
+	WRITE_ONCE(g_mca_business_battery, NULL);
+	synchronize_srcu(&mca_battery_callbacks);
+	mca_event_block_notify_unregister(MCA_EVENT_TYPE_BATTERY_INFO, &battery->batt_info_nb);
 	return 0;
 }
 
-static const struct of_device_id dada_battery_match[] = {
+static void business_battery_shutdown(struct platform_device *pdev)
+{
+	//struct business_battery *battery = platform_get_drvdata(pdev);
+
+	//cancel_work_sync(&battery->event_process_work);
+}
+
+static const struct of_device_id match_table[] = {
 	{ .compatible = "mca,business_battery" },
 	{},
 };
-MODULE_DEVICE_TABLE(of, dada_battery_match);
 
-static struct platform_driver dada_battery_driver = {
+static struct platform_driver business_battery_driver = {
 	.driver = {
-		.name = "mca_business_battery",
-		.of_match_table = dada_battery_match,
+		.owner = THIS_MODULE,
+		.name = "business_battery",
+		.of_match_table = match_table,
 	},
-	.probe = dada_battery_probe,
-	.remove = dada_battery_remove,
+	.probe = business_battery_probe,
+	.remove = business_battery_remove,
+	.shutdown = business_battery_shutdown,
 };
-module_platform_driver(dada_battery_driver);
 
-MODULE_DESCRIPTION("Xiaomi Dada MCA battery business layer");
+static int __init business_battery_init(void)
+{
+	return platform_driver_register(&business_battery_driver);
+}
+module_init(business_battery_init);
+
+static void __exit business_battery_exit(void)
+{
+	platform_driver_unregister(&business_battery_driver);
+}
+module_exit(business_battery_exit);
+
+MODULE_DESCRIPTION("business battery core");
+MODULE_AUTHOR("getian@xiaomi.com");
 MODULE_LICENSE("GPL v2");
+
+MODULE_DEVICE_TABLE(of, match_table);

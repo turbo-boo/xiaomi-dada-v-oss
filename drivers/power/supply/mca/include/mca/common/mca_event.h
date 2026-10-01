@@ -107,16 +107,30 @@ enum mca_event_code {
 	MCA_EVENT_MAX = 0x52,
 };
 
+enum MCA_BATT_CHGR_STATUS_TYPE {
+	MCA_BATT_CHGR_STATUS_INHIBIT,
+	MCA_BATT_CHGR_STATUS_TRICKLE,
+	MCA_BATT_CHGR_STATUS_PRECHARGE,
+	MCA_BATT_CHGR_STATUS_FULLON,
+	MCA_BATT_CHGR_STATUS_TAPER,
+	MCA_BATT_CHGR_STATUS_TERMINATION,
+	MCA_BATT_CHGR_STATUS_PAUSE,
+	MCA_BATT_CHGR_STATUS_CHARGING_DISABLED,
+	MCA_BATT_CHGR_STATUS_FAST_LINEAR,
+};
+
 struct mca_event_notify_data {
 	const char *event;
 	int event_len;
 };
 
-int mca_event_block_notify_register(unsigned int type, struct notifier_block *nb);
-int mca_event_block_notify_unregister(unsigned int type, struct notifier_block *nb);
+int mca_event_block_notify_register(unsigned int type,
+				    struct notifier_block *nb);
+int mca_event_block_notify_unregister(unsigned int type,
+				      struct notifier_block *nb);
 void mca_event_block_notify(unsigned int type, unsigned long event, void *data);
 void mca_event_report_uevent(const struct mca_event_notify_data *n_data);
 void mca_event_report_multiple_uevent(const struct mca_event_notify_data *n_data,
 				      unsigned int num);
 
-#endif
+#endif /* _MCA_COMMON_MCA_EVENT_H_ */

@@ -76,4 +76,5 @@ Without the full kernel's ``Module.symvers``, modpost warnings do not establish
 complete kernel dependency correctness. The Dada DT tables, GLINK controls,
 thermal interaction, reconnect behavior and module binding still require device
 validation. Wired/wireless high-power CP state machines and reverse wireless
-remain separate unfinished work; this driver does not implement them.
+are now provided by the Onyx port; see ``mca-dada-onyx-port.rst`` for scope,
+firmware gating and the separate full-kernel validation workflow.

@@ -1,4 +1,5 @@
 // SPDX-License-Identifier: GPL-2.0
+#include <mca/common/mca_callback.h>
 #include <linux/device.h>
 #include <linux/errno.h>
 #include <linux/module.h>
@@ -56,6 +57,7 @@ static const char * const mca_charge_if_type_names[MCA_CHARGE_IF_CHG_TYPE_END] =
 
 static struct mca_charge_if_ops *mca_charge_if_ops[MCA_CHARGE_IF_CHG_TYPE_END];
 static DEFINE_MUTEX(mca_charge_if_lock);
+DEFINE_STATIC_SRCU(mca_charge_if_callbacks);
 
 static int mca_charge_if_type_from_name(const char *name)
 {
@@ -81,11 +83,28 @@ int mca_charge_if_ops_register(struct mca_charge_if_ops *ops)
 		return -EINVAL;
 
 	mutex_lock(&mca_charge_if_lock);
-	mca_charge_if_ops[type] = ops;
+	rcu_assign_pointer(mca_charge_if_ops[type], ops);
 	mutex_unlock(&mca_charge_if_lock);
 	return 0;
 }
 EXPORT_SYMBOL(mca_charge_if_ops_register);
+
+void mca_charge_if_ops_unregister(struct mca_charge_if_ops *ops)
+{
+	int type;
+
+	if (!ops)
+		return;
+	type = mca_charge_if_type_from_name(ops->type_name);
+	if (type < 0 || type >= MCA_CHARGE_IF_CHG_TYPE_ALL)
+		return;
+	mutex_lock(&mca_charge_if_lock);
+	if (mca_charge_if_ops[type] == ops)
+		rcu_assign_pointer(mca_charge_if_ops[type], NULL);
+	mutex_unlock(&mca_charge_if_lock);
+	synchronize_srcu(&mca_charge_if_callbacks);
+}
+EXPORT_SYMBOL(mca_charge_if_ops_unregister);
 
 static struct mca_charge_if_ops *mca_charge_if_get_ops(int type)
 {
@@ -94,7 +113,7 @@ static struct mca_charge_if_ops *mca_charge_if_get_ops(int type)
 	if (type < 0 || type >= MCA_CHARGE_IF_CHG_TYPE_ALL)
 		return NULL;
 	mutex_lock(&mca_charge_if_lock);
-	ops = mca_charge_if_ops[type];
+	ops = srcu_dereference(mca_charge_if_ops[type], &mca_charge_if_callbacks);
 	mutex_unlock(&mca_charge_if_lock);
 	return ops;
 }
@@ -102,6 +121,8 @@ static struct mca_charge_if_ops *mca_charge_if_get_ops(int type)
 static int mca_charge_if_set_one(const char *user, int type, int attr,
 				char *value)
 {
+	CLASS(mca_callback, callback_scope)(&mca_charge_if_callbacks);
+
 	struct mca_charge_if_ops *ops = mca_charge_if_get_ops(type);
 	unsigned int uvalue = 0;
 
@@ -160,6 +181,8 @@ static int mca_charge_if_set(const char *user, int type, int attr, char *value)
 
 static int mca_charge_if_get_one(int type, int attr, char *value, size_t size)
 {
+	CLASS(mca_callback, callback_scope)(&mca_charge_if_callbacks);
+
 	struct mca_charge_if_ops *ops = mca_charge_if_get_ops(type);
 
 	if (!ops || !value || !size)
@@ -211,6 +234,8 @@ static bool mca_charge_if_suspend_status(void)
 static ssize_t mca_charge_if_show(struct device *dev,
 				  struct device_attribute *attr, char *buf)
 {
+	CLASS(mca_callback, callback_scope)(&mca_charge_if_callbacks);
+
 	struct mca_sysfs_attr_info *info =
 		container_of(attr, struct mca_sysfs_attr_info, attr);
 	char value[MCA_CHARGE_IF_MAX_VALUE_BUFF];

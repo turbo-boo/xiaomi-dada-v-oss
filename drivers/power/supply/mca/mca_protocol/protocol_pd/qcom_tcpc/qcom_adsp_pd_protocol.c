@@ -455,9 +455,20 @@ static int adsp_pd_probe(struct platform_device *pdev)
 	if (ret)
 		return ret;
 	ret = mca_adsp_glink_resister_ops(&pd->glink_ops, pd);
-	if (ret)
+	if (ret) {
+		protocol_class_pd_unregister_ops(TYPEC_PORT_0, pd);
 		return ret;
+	}
 	mca_log_info("Dada ADSP PD transport registered\n");
+	return 0;
+}
+
+static int adsp_pd_remove(struct platform_device *pdev)
+{
+	void *pd = platform_get_drvdata(pdev);
+
+	mca_adsp_glink_unregister_ops(pd);
+	protocol_class_pd_unregister_ops(TYPEC_PORT_0, pd);
 	return 0;
 }
 
@@ -473,6 +484,7 @@ static struct platform_driver adsp_pd_driver = {
 		.of_match_table = adsp_pd_match,
 	},
 	.probe = adsp_pd_probe,
+	.remove = adsp_pd_remove,
 };
 module_platform_driver(adsp_pd_driver);
 

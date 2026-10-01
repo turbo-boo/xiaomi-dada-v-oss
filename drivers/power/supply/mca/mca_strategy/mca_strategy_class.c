@@ -15,7 +15,6 @@ struct mca_strategy_func_data {
 static struct mca_strategy_func_data strategy_data[STRATEGY_FUNC_TYPE_MAX];
 static DEFINE_MUTEX(strategy_lock);
 DEFINE_STATIC_SRCU(strategy_srcu);
-static bool wls_thermal_remove;
 
 int mca_strategy_func_get_status(int type, int status, void *value)
 {
@@ -96,22 +95,6 @@ void mca_strategy_ops_unregister(unsigned int type, void *data)
 	synchronize_srcu(&strategy_srcu);
 }
 EXPORT_SYMBOL(mca_strategy_ops_unregister);
-
-int mca_get_wls_charger_thermal_remove(bool *value)
-{
-	if (!value)
-		return -EINVAL;
-	*value = READ_ONCE(wls_thermal_remove);
-	return 0;
-}
-EXPORT_SYMBOL(mca_get_wls_charger_thermal_remove);
-
-int mca_set_wls_charger_thermal_remove(bool value)
-{
-	WRITE_ONCE(wls_thermal_remove, value);
-	return 0;
-}
-EXPORT_SYMBOL(mca_set_wls_charger_thermal_remove);
 
 MODULE_DESCRIPTION("Xiaomi MCA strategy registry");
 MODULE_LICENSE("GPL v2");

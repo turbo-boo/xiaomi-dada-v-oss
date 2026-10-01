@@ -177,4 +177,6 @@ int platform_class_cp_set_qb(unsigned int role, bool en);
 int platform_class_cp_set_rcp(unsigned int role, bool en);
 int platform_class_cp_set_pmid2outuvp_th(unsigned int role, int value);
 
+void platform_class_cp_unregister_ops(unsigned int role, void *data);
+
 #endif /* _MCA_PLATFORM_PLATFORM_CP_CLASS_H_ */

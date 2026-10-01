@@ -1,284 +1,973 @@
 // SPDX-License-Identifier: GPL-2.0
-/* Xiaomi MCA fuel-gauge ops dispatcher for Dada. */
-#include <linux/errno.h>
+/*
+ * mca_platform_fg_ic_ops.c
+ *
+ * mca platform fuelgauge ic operation driver
+ *
+ * Copyright (c) 2023-2023 Xiaomi Technologies Co., Ltd.
+ *
+ * This software is licensed under the terms of the GNU General Public
+ * License version 2, as published by the Free Software Foundation, and
+ * may be copied, distributed, and modified under those terms.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+ * GNU General Public License for more details.
+ *
+ */
+#include <linux/slab.h>
+#include <linux/mutex.h>
+#include <mca/common/mca_callback.h>
+
+#include <linux/kernel.h>
+#include <linux/string.h>
+#include <linux/device.h>
 #include <linux/module.h>
+#include <linux/platform_device.h>
 #include <mca/platform/platform_fg_ic_ops.h>
+#include <mca/common/mca_log.h>
 
-struct mca_fg_ops_data {
-	struct fuelguage_ic_ops *ops;
+#define platform_fg_ops_invalid(data, name) \
+	(!data || !data->ops || !data->ops->name)
+
+struct fuelguage_info {
 	void *data;
+	struct fuelguage_ic_ops *ops;
 };
+static struct fuelguage_info *g_fg_ic_ops[FG_IC_MAX];
+static DEFINE_MUTEX(mca_ic_registry_lock);
+DEFINE_STATIC_SRCU(mca_ic_callbacks);
 
-static struct mca_fg_ops_data fg_data[FG_IC_MAX];
-
-static struct mca_fg_ops_data *mca_fg_get(unsigned int role)
+static inline struct fuelguage_info *
+platform_get_fg_ic_ops(unsigned int ic_role)
 {
-	if (role >= FG_IC_MAX || !fg_data[role].ops)
+	if (ic_role >= FG_IC_MAX)
 		return NULL;
-	return &fg_data[role];
+	return srcu_dereference(g_fg_ic_ops[ic_role], &mca_ic_callbacks);
 }
 
-int platform_fg_ic_ops_register(unsigned int role, void *data,
-				struct fuelguage_ic_ops *ops)
+int platform_fg_ic_ops_register(unsigned int ic_role, void *data, struct fuelguage_ic_ops *platform_fg_ops)
 {
-	if (role >= FG_IC_MAX || !data || !ops)
+	struct fuelguage_info *entry;
+	int ret = 0;
+
+	if (ic_role >= FG_IC_MAX || !data || !platform_fg_ops)
 		return -EINVAL;
-	fg_data[role].data = data;
-	fg_data[role].ops = ops;
-	return 0;
+	entry = kmalloc(sizeof(*entry), GFP_KERNEL);
+	if (!entry)
+		return -ENOMEM;
+	entry->data = data;
+	entry->ops = platform_fg_ops;
+	mutex_lock(&mca_ic_registry_lock);
+	if (g_fg_ic_ops[ic_role])
+		ret = -EBUSY;
+	else
+		rcu_assign_pointer(g_fg_ic_ops[ic_role], entry);
+	mutex_unlock(&mca_ic_registry_lock);
+	if (ret)
+		kfree(entry);
+	return ret;
 }
 EXPORT_SYMBOL(platform_fg_ic_ops_register);
 
-#define FG_INT_OUT(_fn, _op) \
-int _fn(unsigned int role, int *val) \
-{ \
-	struct mca_fg_ops_data *d = mca_fg_get(role); \
-	if (!val) \
-		return -EINVAL; \
-	if (!d || !d->ops->_op) \
-		return -EOPNOTSUPP; \
-	return d->ops->_op(d->data, val); \
-} \
-EXPORT_SYMBOL(_fn)
-
-#define FG_BOOL_OUT(_fn, _op) \
-int _fn(unsigned int role, bool *val) \
-{ \
-	struct mca_fg_ops_data *d = mca_fg_get(role); \
-	if (!val) \
-		return -EINVAL; \
-	if (!d || !d->ops->_op) \
-		return -EOPNOTSUPP; \
-	return d->ops->_op(d->data, val); \
-} \
-EXPORT_SYMBOL(_fn)
-
-#define FG_INT_IN(_fn, _op) \
-int _fn(unsigned int role, int val) \
-{ \
-	struct mca_fg_ops_data *d = mca_fg_get(role); \
-	if (!d || !d->ops->_op) \
-		return -EOPNOTSUPP; \
-	return d->ops->_op(d->data, val); \
-} \
-EXPORT_SYMBOL(_fn)
-
-#define FG_BOOL_IN(_fn, _op) \
-int _fn(unsigned int role, bool val) \
-{ \
-	struct mca_fg_ops_data *d = mca_fg_get(role); \
-	if (!d || !d->ops->_op) \
-		return -EOPNOTSUPP; \
-	return d->ops->_op(d->data, val); \
-} \
-EXPORT_SYMBOL(_fn)
-
-#define FG_NOARG_RET(_fn, _op) \
-int _fn(unsigned int role) \
-{ \
-	struct mca_fg_ops_data *d = mca_fg_get(role); \
-	if (!d || !d->ops->_op) \
-		return -EOPNOTSUPP; \
-	return d->ops->_op(d->data); \
-} \
-EXPORT_SYMBOL(_fn)
-
-FG_BOOL_OUT(platform_fg_ops_probe_ok, fg_ic_probe_ok);
-FG_NOARG_RET(platform_fg_ops_get_soc, fg_ic_get_soc);
-FG_INT_OUT(platform_fg_ops_get_rsoc, fg_ic_get_rsoc);
-FG_INT_OUT(platform_fg_ops_get_curr, fg_ic_get_curr);
-FG_INT_IN(platform_fg_ops_set_authentic, fg_ic_set_authentic);
-FG_INT_OUT(platform_fg_ops_get_authentic, fg_ic_get_authentic);
-FG_BOOL_OUT(platform_fg_ops_get_error_state, fg_ic_get_error_state);
-FG_INT_OUT(platform_fg_ops_get_volt, fg_ic_get_volt);
-FG_INT_IN(platform_fg_ops_set_temp, fg_ic_set_temp);
-FG_INT_OUT(platform_fg_ops_get_temp, fg_ic_get_temp);
-FG_INT_IN(platform_fg_ops_set_iterm, fg_ic_set_iterm);
-FG_NOARG_RET(platform_fg_ops_get_charge_status, fg_ic_get_charge_status);
-FG_INT_OUT(platform_fg_ops_get_rm, fg_ic_get_rm);
-FG_INT_OUT(platform_fg_ops_get_isc_alert_level, fg_ic_get_isc_alert_level);
-FG_INT_OUT(platform_fg_ops_get_soa_alert_level, fg_ic_get_soa_alert_level);
-FG_INT_OUT(platform_fg_ops_get_fastcharge, fg_ic_get_fastcharge);
-FG_BOOL_IN(platform_fg_ops_set_fastcharge, fg_ic_set_fastcharge);
-FG_INT_OUT(platform_fg_ops_get_chg_vol, fg_ic_get_chg_vol);
-FG_INT_OUT(platform_fg_ops_get_chip_ok, fg_ic_get_chip_ok);
-FG_INT_OUT(platform_fg_ops_get_cyclecount, fg_ic_get_cyclecount);
-FG_INT_OUT(platform_fg_ops_get_tte, fg_ic_get_tte);
-FG_INT_OUT(platform_fg_ops_get_ttf, fg_ic_get_ttf);
-FG_INT_OUT(platform_fg_ops_get_fcc, fg_ic_get_fcc);
-FG_INT_OUT(platform_fg_ops_get_full_design, fg_ic_get_full_design);
-FG_INT_OUT(platform_fg_ops_get_decimal_rate, fg_ic_get_decimal_rate);
-FG_INT_OUT(platform_fg_ops_get_decimal, fg_ic_get_decimal);
-FG_INT_OUT(platform_fg_ops_get_soh, fg_ic_get_soh);
-FG_INT_OUT(platform_fg_ops_get_temp_max, fg_ic_get_temp_max);
-FG_INT_OUT(platform_fg_ops_get_time_ot, fg_ic_get_time_ot);
-FG_INT_OUT(platform_fg_ops_get_cutoff_voltage, fg_ic_get_cutoff_voltage);
-FG_INT_IN(platform_fg_ops_set_cutoff_voltage, fg_ic_set_cutoff_voltage);
-FG_NOARG_RET(platform_fg_ops_get_dod_count, fg_ic_get_dod_count);
-FG_INT_OUT(platform_fg_ops_get_count_level1, fg_ic_get_count_level1);
-FG_INT_OUT(platform_fg_ops_get_count_level2, fg_ic_get_count_level2);
-FG_INT_OUT(platform_fg_ops_get_count_level3, fg_ic_get_count_level3);
-FG_INT_OUT(platform_fg_ops_get_count_lowtemp, fg_ic_get_count_lowtemp);
-FG_NOARG_RET(platform_fg_ops_set_clear_count_data, fg_ic_set_clear_count_data);
-FG_INT_OUT(platform_fg_ops_get_adapt_power, fg_ic_get_adapt_power);
-FG_INT_OUT(platform_fg_ops_get_aged_flag, fg_ic_get_aged_flag);
-FG_INT_OUT(platform_fg_ops_get_raw_soc, fg_ic_get_raw_soc);
-FG_INT_OUT(platform_fg_ops_get_real_supplement_energy,
-	   fg_ic_get_real_supplement_energy);
-FG_INT_OUT(platform_fg_ops_get_calibration_ffc_iterm,
-	   fg_ic_get_calibration_ffc_iterm);
-FG_INT_OUT(platform_fg_ops_get_calibration_charge_energy,
-	   fg_ic_get_calibration_charge_energy);
-FG_INT_OUT(platform_fg_ops_get_temp_min, fg_ic_get_temp_min);
-FG_BOOL_OUT(platform_fg_ops_get_fc, fg_ic_get_fc);
-FG_BOOL_IN(platform_fg_ops_set_co, fg_ic_set_co);
-FG_INT_OUT(platform_fg_ops_get_pack_vendor, fg_ic_get_pack_vendor);
-FG_INT_OUT(platform_fg_ops_get_original_temp, fg_ic_get_original_temp);
-FG_INT_OUT(platform_fg_ops_get_average_current, fg_ic_get_average_current);
-FG_INT_OUT(platform_fg_ops_get_ota_update_flag, fg_ic_get_ota_update_flag);
-FG_NOARG_RET(platform_fg_ops_ota_update_check, fg_ic_ota_update_check);
-
-int platform_fg_ops_get_batt_info(unsigned int role, void *info)
+void platform_fg_ic_ops_unregister(unsigned int ic_role, void *data)
 {
-	struct mca_fg_ops_data *d = mca_fg_get(role);
-	if (!info)
-		return -EINVAL;
-	if (!d || !d->ops->fg_ic_get_batt_info)
+	struct fuelguage_info *entry = NULL;
+
+	if (ic_role >= FG_IC_MAX)
+		return;
+	mutex_lock(&mca_ic_registry_lock);
+	if (g_fg_ic_ops[ic_role] && g_fg_ic_ops[ic_role]->data == data) {
+		entry = g_fg_ic_ops[ic_role];
+		rcu_assign_pointer(g_fg_ic_ops[ic_role], NULL);
+	}
+	mutex_unlock(&mca_ic_registry_lock);
+	if (entry) {
+		synchronize_srcu(&mca_ic_callbacks);
+		kfree(entry);
+	}
+}
+EXPORT_SYMBOL(platform_fg_ic_ops_unregister);
+
+
+int platform_fg_ops_probe_ok(unsigned int ic_role, bool *ok)
+{
+	CLASS(mca_callback, callback_scope)(&mca_ic_callbacks);
+
+	struct fuelguage_info *temp_info = platform_get_fg_ic_ops(ic_role);
+
+	if (platform_fg_ops_invalid(temp_info, fg_ic_probe_ok))
 		return -EOPNOTSUPP;
-	return d->ops->fg_ic_get_batt_info(d->data, info);
+
+	return temp_info->ops->fg_ic_probe_ok(temp_info->data, ok);
+}
+EXPORT_SYMBOL(platform_fg_ops_probe_ok);
+
+int platform_fg_ops_get_batt_info(unsigned int ic_role, void *info)
+{
+	CLASS(mca_callback, callback_scope)(&mca_ic_callbacks);
+
+	struct fuelguage_info *temp_info = platform_get_fg_ic_ops(ic_role);
+
+	if (platform_fg_ops_invalid(temp_info, fg_ic_get_batt_info))
+		return -EOPNOTSUPP;
+
+	return temp_info->ops->fg_ic_get_batt_info(temp_info->data, info);
 }
 EXPORT_SYMBOL(platform_fg_ops_get_batt_info);
 
-int platform_fg_ops_set_verify_digest(unsigned int role, char *buf)
+int platform_fg_ops_get_soc(unsigned int ic_role)
 {
-	struct mca_fg_ops_data *d = mca_fg_get(role);
-	if (!buf)
-		return -EINVAL;
-	if (!d || !d->ops->fg_ic_set_verify_digest)
+	CLASS(mca_callback, callback_scope)(&mca_ic_callbacks);
+
+	struct fuelguage_info *temp_info = platform_get_fg_ic_ops(ic_role);
+
+	if (platform_fg_ops_invalid(temp_info, fg_ic_get_soc))
 		return -EOPNOTSUPP;
-	return d->ops->fg_ic_set_verify_digest(d->data, buf);
+
+	return temp_info->ops->fg_ic_get_soc(temp_info->data);
+}
+EXPORT_SYMBOL(platform_fg_ops_get_soc);
+
+int platform_fg_ops_get_rsoc(unsigned int ic_role, int *rsoc)
+{
+	CLASS(mca_callback, callback_scope)(&mca_ic_callbacks);
+
+	struct fuelguage_info *temp_info = platform_get_fg_ic_ops(ic_role);
+
+	if (platform_fg_ops_invalid(temp_info, fg_ic_get_rsoc))
+		return -EOPNOTSUPP;
+
+	return temp_info->ops->fg_ic_get_rsoc(temp_info->data, rsoc);
+}
+EXPORT_SYMBOL(platform_fg_ops_get_rsoc);
+
+int platform_fg_ops_get_curr(unsigned int ic_role, int *curr)
+{
+	CLASS(mca_callback, callback_scope)(&mca_ic_callbacks);
+
+	struct fuelguage_info *temp_info = platform_get_fg_ic_ops(ic_role);
+
+	if (platform_fg_ops_invalid(temp_info, fg_ic_get_curr))
+		return -EOPNOTSUPP;
+
+	return temp_info->ops->fg_ic_get_curr(temp_info->data, curr);
+}
+EXPORT_SYMBOL(platform_fg_ops_get_curr);
+
+int platform_fg_ops_set_verify_digest(unsigned int ic_role, char *buf)
+{
+	CLASS(mca_callback, callback_scope)(&mca_ic_callbacks);
+
+	struct fuelguage_info *temp_info = platform_get_fg_ic_ops(ic_role);
+
+	if (platform_fg_ops_invalid(temp_info, fg_ic_set_verify_digest))
+		return -EOPNOTSUPP;
+
+	return temp_info->ops->fg_ic_set_verify_digest(temp_info->data, buf);
 }
 EXPORT_SYMBOL(platform_fg_ops_set_verify_digest);
 
-int platform_fg_ops_get_verify_digest(unsigned int role, char *buf)
+int platform_fg_ops_get_verify_digest(unsigned int ic_role, char *buf)
 {
-	struct mca_fg_ops_data *d = mca_fg_get(role);
-	if (!buf)
-		return -EINVAL;
-	if (!d || !d->ops->fg_ic_get_verify_digest)
+	CLASS(mca_callback, callback_scope)(&mca_ic_callbacks);
+
+	struct fuelguage_info *temp_info = platform_get_fg_ic_ops(ic_role);
+
+	if (platform_fg_ops_invalid(temp_info, fg_ic_get_verify_digest))
 		return -EOPNOTSUPP;
-	return d->ops->fg_ic_get_verify_digest(d->data, buf);
+
+	return temp_info->ops->fg_ic_get_verify_digest(temp_info->data, buf);
 }
 EXPORT_SYMBOL(platform_fg_ops_get_verify_digest);
 
-int platform_fg_ops_get_batt_cell_info(unsigned int role, const char **name)
+int platform_fg_ops_set_authentic(unsigned int ic_role, int value)
 {
-	struct mca_fg_ops_data *d = mca_fg_get(role);
-	if (!name)
-		return -EINVAL;
-	if (!d || !d->ops->fg_ic_get_batt_cell_info)
+	CLASS(mca_callback, callback_scope)(&mca_ic_callbacks);
+
+	struct fuelguage_info *temp_info = platform_get_fg_ic_ops(ic_role);
+
+	if (platform_fg_ops_invalid(temp_info, fg_ic_set_authentic))
 		return -EOPNOTSUPP;
-	return d->ops->fg_ic_get_batt_cell_info(d->data, name);
+
+	return temp_info->ops->fg_ic_set_authentic(temp_info->data, value);
+}
+EXPORT_SYMBOL(platform_fg_ops_set_authentic);
+
+int platform_fg_ops_get_authentic(unsigned int ic_role, int *value)
+{
+	CLASS(mca_callback, callback_scope)(&mca_ic_callbacks);
+
+	struct fuelguage_info *temp_info = platform_get_fg_ic_ops(ic_role);
+
+	if (platform_fg_ops_invalid(temp_info, fg_ic_get_authentic))
+		return -EOPNOTSUPP;
+
+	return temp_info->ops->fg_ic_get_authentic(temp_info->data, value);
+}
+EXPORT_SYMBOL(platform_fg_ops_get_authentic);
+
+int platform_fg_ops_get_error_state(unsigned int ic_role, bool *error)
+{
+	CLASS(mca_callback, callback_scope)(&mca_ic_callbacks);
+
+	struct fuelguage_info *temp_info = platform_get_fg_ic_ops(ic_role);
+
+	if (platform_fg_ops_invalid(temp_info, fg_ic_get_error_state))
+		return -EOPNOTSUPP;
+
+	return temp_info->ops->fg_ic_get_error_state(temp_info->data, error);
+}
+EXPORT_SYMBOL(platform_fg_ops_get_error_state);
+
+int platform_fg_ops_get_volt(unsigned int ic_role, int *volt)
+{
+	CLASS(mca_callback, callback_scope)(&mca_ic_callbacks);
+
+	struct fuelguage_info *temp_info = platform_get_fg_ic_ops(ic_role);
+
+	if (platform_fg_ops_invalid(temp_info, fg_ic_get_volt))
+		return -EOPNOTSUPP;
+
+	return temp_info->ops->fg_ic_get_volt(temp_info->data, volt);
+}
+EXPORT_SYMBOL(platform_fg_ops_get_volt);
+
+int platform_fg_ops_set_temp(unsigned int ic_role, int temp)
+{
+	CLASS(mca_callback, callback_scope)(&mca_ic_callbacks);
+
+	struct fuelguage_info *temp_info = platform_get_fg_ic_ops(ic_role);
+
+	if (platform_fg_ops_invalid(temp_info, fg_ic_set_temp))
+		return -EOPNOTSUPP;
+
+	return temp_info->ops->fg_ic_set_temp(temp_info->data, temp);
+}
+EXPORT_SYMBOL(platform_fg_ops_set_temp);
+
+int platform_fg_ops_get_temp(unsigned int ic_role, int *temp)
+{
+	CLASS(mca_callback, callback_scope)(&mca_ic_callbacks);
+
+	struct fuelguage_info *temp_info = platform_get_fg_ic_ops(ic_role);
+
+	if (platform_fg_ops_invalid(temp_info, fg_ic_get_temp))
+		return -EOPNOTSUPP;
+
+	return temp_info->ops->fg_ic_get_temp(temp_info->data, temp);
+}
+EXPORT_SYMBOL(platform_fg_ops_get_temp);
+
+int platform_fg_ops_set_iterm(unsigned int ic_role, int curr)
+{
+	CLASS(mca_callback, callback_scope)(&mca_ic_callbacks);
+
+	struct fuelguage_info *temp_info = platform_get_fg_ic_ops(ic_role);
+
+	if (platform_fg_ops_invalid(temp_info, fg_ic_set_iterm))
+		return -EOPNOTSUPP;
+
+	return temp_info->ops->fg_ic_set_iterm(temp_info->data, curr);
+}
+EXPORT_SYMBOL(platform_fg_ops_set_iterm);
+
+int platform_fg_ops_get_charge_status(unsigned int ic_role)
+{
+	CLASS(mca_callback, callback_scope)(&mca_ic_callbacks);
+
+	struct fuelguage_info *temp_info = platform_get_fg_ic_ops(ic_role);
+
+	if (platform_fg_ops_invalid(temp_info, fg_ic_get_charge_status))
+		return -EOPNOTSUPP;
+
+	return temp_info->ops->fg_ic_get_charge_status(temp_info->data);
+}
+EXPORT_SYMBOL(platform_fg_ops_get_charge_status);
+
+int platform_fg_ops_get_rm(unsigned int ic_role, int *rm)
+{
+	CLASS(mca_callback, callback_scope)(&mca_ic_callbacks);
+
+	struct fuelguage_info *temp_info = platform_get_fg_ic_ops(ic_role);
+
+	if (platform_fg_ops_invalid(temp_info, fg_ic_get_rm))
+		return -EOPNOTSUPP;
+
+	return temp_info->ops->fg_ic_get_rm(temp_info->data, rm);
+}
+EXPORT_SYMBOL(platform_fg_ops_get_rm);
+
+int platform_fg_ops_get_isc_alert_level(unsigned int ic_role, int *level)
+{
+	CLASS(mca_callback, callback_scope)(&mca_ic_callbacks);
+
+	struct fuelguage_info *temp_info = platform_get_fg_ic_ops(ic_role);
+
+	if (platform_fg_ops_invalid(temp_info, fg_ic_get_isc_alert_level))
+		return -EOPNOTSUPP;
+
+	return temp_info->ops->fg_ic_get_isc_alert_level(temp_info->data,
+							 level);
+}
+EXPORT_SYMBOL(platform_fg_ops_get_isc_alert_level);
+
+int platform_fg_ops_get_soa_alert_level(unsigned int ic_role, int *level)
+{
+	CLASS(mca_callback, callback_scope)(&mca_ic_callbacks);
+
+	struct fuelguage_info *temp_info = platform_get_fg_ic_ops(ic_role);
+
+	if (platform_fg_ops_invalid(temp_info, fg_ic_get_soa_alert_level))
+		return -EOPNOTSUPP;
+
+	return temp_info->ops->fg_ic_get_soa_alert_level(temp_info->data,
+							 level);
+}
+EXPORT_SYMBOL(platform_fg_ops_get_soa_alert_level);
+
+int platform_fg_ops_get_fastcharge(unsigned int ic_role, int *ffc)
+{
+	CLASS(mca_callback, callback_scope)(&mca_ic_callbacks);
+
+	struct fuelguage_info *temp_info = platform_get_fg_ic_ops(ic_role);
+
+	if (platform_fg_ops_invalid(temp_info, fg_ic_get_fastcharge))
+		return -EOPNOTSUPP;
+
+	return temp_info->ops->fg_ic_get_fastcharge(temp_info->data, ffc);
+}
+EXPORT_SYMBOL(platform_fg_ops_get_fastcharge);
+
+int platform_fg_ops_set_fastcharge(unsigned int ic_role, bool en)
+{
+	CLASS(mca_callback, callback_scope)(&mca_ic_callbacks);
+
+	struct fuelguage_info *temp_info = platform_get_fg_ic_ops(ic_role);
+
+	if (platform_fg_ops_invalid(temp_info, fg_ic_set_fastcharge))
+		return -EOPNOTSUPP;
+
+	return temp_info->ops->fg_ic_set_fastcharge(temp_info->data, en);
+}
+EXPORT_SYMBOL(platform_fg_ops_set_fastcharge);
+
+int platform_fg_ops_get_chg_vol(unsigned int ic_role, int *volt)
+{
+	CLASS(mca_callback, callback_scope)(&mca_ic_callbacks);
+
+	struct fuelguage_info *temp_info = platform_get_fg_ic_ops(ic_role);
+
+	if (platform_fg_ops_invalid(temp_info, fg_ic_get_chg_vol))
+		return -EOPNOTSUPP;
+
+	return temp_info->ops->fg_ic_get_chg_vol(temp_info->data, volt);
+}
+EXPORT_SYMBOL(platform_fg_ops_get_chg_vol);
+
+int platform_fg_ops_get_chip_ok(unsigned int ic_role, int *ok)
+{
+	CLASS(mca_callback, callback_scope)(&mca_ic_callbacks);
+
+	struct fuelguage_info *temp_info = platform_get_fg_ic_ops(ic_role);
+
+	if (platform_fg_ops_invalid(temp_info, fg_ic_get_chip_ok))
+		return -EOPNOTSUPP;
+
+	return temp_info->ops->fg_ic_get_chip_ok(temp_info->data, ok);
+}
+EXPORT_SYMBOL(platform_fg_ops_get_chip_ok);
+
+int platform_fg_ops_get_cyclecount(unsigned int ic_role, int *cc)
+{
+	CLASS(mca_callback, callback_scope)(&mca_ic_callbacks);
+
+	struct fuelguage_info *temp_info = platform_get_fg_ic_ops(ic_role);
+
+	if (platform_fg_ops_invalid(temp_info, fg_ic_get_cyclecount))
+		return -EOPNOTSUPP;
+
+	return temp_info->ops->fg_ic_get_cyclecount(temp_info->data, cc);
+}
+EXPORT_SYMBOL(platform_fg_ops_get_cyclecount);
+
+int platform_fg_ops_get_tte(unsigned int ic_role, int *tte)
+{
+	CLASS(mca_callback, callback_scope)(&mca_ic_callbacks);
+
+	struct fuelguage_info *temp_info = platform_get_fg_ic_ops(ic_role);
+
+	if (platform_fg_ops_invalid(temp_info, fg_ic_get_tte))
+		return -EOPNOTSUPP;
+
+	return temp_info->ops->fg_ic_get_tte(temp_info->data, tte);
+}
+EXPORT_SYMBOL(platform_fg_ops_get_tte);
+
+int platform_fg_ops_get_ttf(unsigned int ic_role, int *ttf)
+{
+	CLASS(mca_callback, callback_scope)(&mca_ic_callbacks);
+
+	struct fuelguage_info *temp_info = platform_get_fg_ic_ops(ic_role);
+
+	if (platform_fg_ops_invalid(temp_info, fg_ic_get_ttf))
+		return -EOPNOTSUPP;
+
+	return temp_info->ops->fg_ic_get_ttf(temp_info->data, ttf);
+}
+EXPORT_SYMBOL(platform_fg_ops_get_ttf);
+
+int platform_fg_ops_get_fcc(unsigned int ic_role, int *fcc)
+{
+	CLASS(mca_callback, callback_scope)(&mca_ic_callbacks);
+
+	struct fuelguage_info *temp_info = platform_get_fg_ic_ops(ic_role);
+
+	if (platform_fg_ops_invalid(temp_info, fg_ic_get_fcc))
+		return -EOPNOTSUPP;
+
+	return temp_info->ops->fg_ic_get_fcc(temp_info->data, fcc);
+}
+EXPORT_SYMBOL(platform_fg_ops_get_fcc);
+
+int platform_fg_ops_get_full_design(unsigned int ic_role, int *dc)
+{
+	CLASS(mca_callback, callback_scope)(&mca_ic_callbacks);
+
+	struct fuelguage_info *temp_info = platform_get_fg_ic_ops(ic_role);
+
+	if (platform_fg_ops_invalid(temp_info, fg_ic_get_full_design))
+		return -EOPNOTSUPP;
+
+	return temp_info->ops->fg_ic_get_full_design(temp_info->data, dc);
+}
+EXPORT_SYMBOL(platform_fg_ops_get_full_design);
+
+int platform_fg_ops_get_decimal_rate(unsigned int ic_role, int *rate)
+{
+	CLASS(mca_callback, callback_scope)(&mca_ic_callbacks);
+
+	struct fuelguage_info *temp_info = platform_get_fg_ic_ops(ic_role);
+
+	if (platform_fg_ops_invalid(temp_info, fg_ic_get_decimal_rate))
+		return -EOPNOTSUPP;
+
+	return temp_info->ops->fg_ic_get_decimal_rate(temp_info->data, rate);
+}
+EXPORT_SYMBOL(platform_fg_ops_get_decimal_rate);
+
+int platform_fg_ops_get_decimal(unsigned int ic_role, int *decimal)
+{
+	CLASS(mca_callback, callback_scope)(&mca_ic_callbacks);
+
+	struct fuelguage_info *temp_info = platform_get_fg_ic_ops(ic_role);
+
+	if (platform_fg_ops_invalid(temp_info, fg_ic_get_decimal))
+		return -EOPNOTSUPP;
+
+	return temp_info->ops->fg_ic_get_decimal(temp_info->data, decimal);
+}
+EXPORT_SYMBOL(platform_fg_ops_get_decimal);
+
+int platform_fg_ops_get_soh(unsigned int ic_role, int *soh)
+{
+	CLASS(mca_callback, callback_scope)(&mca_ic_callbacks);
+
+	struct fuelguage_info *temp_info = platform_get_fg_ic_ops(ic_role);
+
+	if (platform_fg_ops_invalid(temp_info, fg_ic_get_soh))
+		return -EOPNOTSUPP;
+
+	return temp_info->ops->fg_ic_get_soh(temp_info->data, soh);
+}
+EXPORT_SYMBOL(platform_fg_ops_get_soh);
+
+int platform_fg_ops_get_temp_max(unsigned int ic_role, int *temp_max)
+{
+	CLASS(mca_callback, callback_scope)(&mca_ic_callbacks);
+
+	struct fuelguage_info *temp_info = platform_get_fg_ic_ops(ic_role);
+
+	if (platform_fg_ops_invalid(temp_info, fg_ic_get_temp_max))
+		return -EOPNOTSUPP;
+
+	return temp_info->ops->fg_ic_get_temp_max(temp_info->data, temp_max);
+}
+EXPORT_SYMBOL(platform_fg_ops_get_temp_max);
+
+int platform_fg_ops_get_time_ot(unsigned int ic_role, int *time_ot)
+{
+	CLASS(mca_callback, callback_scope)(&mca_ic_callbacks);
+
+	struct fuelguage_info *temp_info = platform_get_fg_ic_ops(ic_role);
+
+	if (platform_fg_ops_invalid(temp_info, fg_ic_get_time_ot))
+		return -EOPNOTSUPP;
+
+	return temp_info->ops->fg_ic_get_time_ot(temp_info->data, time_ot);
+}
+EXPORT_SYMBOL(platform_fg_ops_get_time_ot);
+
+int platform_fg_ops_get_batt_cell_info(unsigned int ic_role, const char **name)
+{
+	CLASS(mca_callback, callback_scope)(&mca_ic_callbacks);
+
+	struct fuelguage_info *temp_info = platform_get_fg_ic_ops(ic_role);
+
+	if (platform_fg_ops_invalid(temp_info, fg_ic_get_batt_cell_info))
+		return -EOPNOTSUPP;
+
+	return temp_info->ops->fg_ic_get_batt_cell_info(temp_info->data, name);
 }
 EXPORT_SYMBOL(platform_fg_ops_get_batt_cell_info);
 
-void platform_fg_ops_fl4p0_enable_check(unsigned int role)
+int platform_fg_ops_get_cutoff_voltage(unsigned int ic_role, int *volt)
 {
-	struct mca_fg_ops_data *d = mca_fg_get(role);
-	if (d && d->ops->fg_ic_fl4p0_enable_check)
-		d->ops->fg_ic_fl4p0_enable_check(d->data);
+	CLASS(mca_callback, callback_scope)(&mca_ic_callbacks);
+
+	struct fuelguage_info *temp_info = platform_get_fg_ic_ops(ic_role);
+
+	if (platform_fg_ops_invalid(temp_info, fg_ic_get_cutoff_voltage))
+		return -EOPNOTSUPP;
+
+	return temp_info->ops->fg_ic_get_cutoff_voltage(temp_info->data, volt);
+}
+EXPORT_SYMBOL(platform_fg_ops_get_cutoff_voltage);
+
+int platform_fg_ops_set_cutoff_voltage(unsigned int ic_role, int value)
+{
+	CLASS(mca_callback, callback_scope)(&mca_ic_callbacks);
+
+	struct fuelguage_info *temp_info = platform_get_fg_ic_ops(ic_role);
+
+	if (platform_fg_ops_invalid(temp_info, fg_ic_set_cutoff_voltage))
+		return -EOPNOTSUPP;
+
+	return temp_info->ops->fg_ic_set_cutoff_voltage(temp_info->data, value);
+}
+EXPORT_SYMBOL(platform_fg_ops_set_cutoff_voltage);
+
+int platform_fg_ops_get_dod_count(unsigned int ic_role)
+{
+	CLASS(mca_callback, callback_scope)(&mca_ic_callbacks);
+
+	struct fuelguage_info *temp_info = platform_get_fg_ic_ops(ic_role);
+
+	if (platform_fg_ops_invalid(temp_info, fg_ic_get_dod_count))
+		return -EOPNOTSUPP;
+
+	return temp_info->ops->fg_ic_get_dod_count(temp_info->data);
+}
+EXPORT_SYMBOL(platform_fg_ops_get_dod_count);
+
+int platform_fg_ops_get_count_level1(unsigned int ic_role, int *count)
+{
+	CLASS(mca_callback, callback_scope)(&mca_ic_callbacks);
+
+	struct fuelguage_info *temp_info = platform_get_fg_ic_ops(ic_role);
+
+	if (platform_fg_ops_invalid(temp_info, fg_ic_get_count_level1))
+		return -EOPNOTSUPP;
+
+	return temp_info->ops->fg_ic_get_count_level1(temp_info->data, count);
+}
+EXPORT_SYMBOL(platform_fg_ops_get_count_level1);
+
+int platform_fg_ops_get_count_level2(unsigned int ic_role, int *count)
+{
+	CLASS(mca_callback, callback_scope)(&mca_ic_callbacks);
+
+	struct fuelguage_info *temp_info = platform_get_fg_ic_ops(ic_role);
+
+	if (platform_fg_ops_invalid(temp_info, fg_ic_get_count_level1))
+		return -EOPNOTSUPP;
+
+	return temp_info->ops->fg_ic_get_count_level2(temp_info->data, count);
+}
+EXPORT_SYMBOL(platform_fg_ops_get_count_level2);
+
+int platform_fg_ops_get_count_level3(unsigned int ic_role, int *count)
+{
+	CLASS(mca_callback, callback_scope)(&mca_ic_callbacks);
+
+	struct fuelguage_info *temp_info = platform_get_fg_ic_ops(ic_role);
+
+	if (platform_fg_ops_invalid(temp_info, fg_ic_get_count_level3))
+		return -EOPNOTSUPP;
+
+	return temp_info->ops->fg_ic_get_count_level3(temp_info->data, count);
+}
+EXPORT_SYMBOL(platform_fg_ops_get_count_level3);
+
+int platform_fg_ops_get_count_lowtemp(unsigned int ic_role, int *count)
+{
+	CLASS(mca_callback, callback_scope)(&mca_ic_callbacks);
+
+	struct fuelguage_info *temp_info = platform_get_fg_ic_ops(ic_role);
+
+	if (platform_fg_ops_invalid(temp_info, fg_ic_get_count_lowtemp))
+		return -EOPNOTSUPP;
+
+	return temp_info->ops->fg_ic_get_count_lowtemp(temp_info->data, count);
+}
+EXPORT_SYMBOL(platform_fg_ops_get_count_lowtemp);
+
+int platform_fg_ops_set_clear_count_data(unsigned int ic_role)
+{
+	CLASS(mca_callback, callback_scope)(&mca_ic_callbacks);
+
+	struct fuelguage_info *temp_info = platform_get_fg_ic_ops(ic_role);
+
+	if (platform_fg_ops_invalid(temp_info, fg_ic_set_clear_count_data))
+		return -EOPNOTSUPP;
+
+	return temp_info->ops->fg_ic_set_clear_count_data(temp_info->data);
+}
+EXPORT_SYMBOL(platform_fg_ops_set_clear_count_data);
+
+int platform_fg_ops_get_adapt_power(unsigned int ic_role, int *adapt_power)
+{
+	CLASS(mca_callback, callback_scope)(&mca_ic_callbacks);
+
+	struct fuelguage_info *temp_info = platform_get_fg_ic_ops(ic_role);
+
+	if (platform_fg_ops_invalid(temp_info, fg_ic_get_adapt_power))
+		return -EOPNOTSUPP;
+
+	return temp_info->ops->fg_ic_get_adapt_power(temp_info->data,
+						     adapt_power);
+}
+EXPORT_SYMBOL(platform_fg_ops_get_adapt_power);
+
+int platform_fg_ops_get_aged_flag(unsigned int ic_role, int *flag)
+{
+	CLASS(mca_callback, callback_scope)(&mca_ic_callbacks);
+
+	struct fuelguage_info *temp_info = platform_get_fg_ic_ops(ic_role);
+
+	if (platform_fg_ops_invalid(temp_info, fg_ic_get_aged_flag))
+		return -EOPNOTSUPP;
+
+	return temp_info->ops->fg_ic_get_aged_flag(temp_info->data, flag);
+}
+EXPORT_SYMBOL(platform_fg_ops_get_aged_flag);
+
+int platform_fg_ops_get_raw_soc(unsigned int ic_role, int *raw_soc)
+{
+	CLASS(mca_callback, callback_scope)(&mca_ic_callbacks);
+
+	struct fuelguage_info *temp_info = platform_get_fg_ic_ops(ic_role);
+
+	if (platform_fg_ops_invalid(temp_info, fg_ic_get_raw_soc))
+		return -EOPNOTSUPP;
+
+	return temp_info->ops->fg_ic_get_raw_soc(temp_info->data, raw_soc);
+}
+EXPORT_SYMBOL(platform_fg_ops_get_raw_soc);
+
+int platform_fg_ops_get_real_supplement_energy(unsigned int ic_role,
+					       int *supplement_energy)
+{
+	CLASS(mca_callback, callback_scope)(&mca_ic_callbacks);
+
+	struct fuelguage_info *temp_info = platform_get_fg_ic_ops(ic_role);
+
+	if (platform_fg_ops_invalid(temp_info,
+				    fg_ic_get_real_supplement_energy))
+		return -EOPNOTSUPP;
+
+	return temp_info->ops->fg_ic_get_real_supplement_energy(
+		temp_info->data, supplement_energy);
+}
+EXPORT_SYMBOL(platform_fg_ops_get_real_supplement_energy);
+
+int platform_fg_ops_get_calibration_ffc_iterm(unsigned int ic_role, int *iterm)
+{
+	CLASS(mca_callback, callback_scope)(&mca_ic_callbacks);
+
+	struct fuelguage_info *temp_info = platform_get_fg_ic_ops(ic_role);
+
+	if (platform_fg_ops_invalid(temp_info, fg_ic_get_calibration_ffc_iterm))
+		return -EOPNOTSUPP;
+
+	return temp_info->ops->fg_ic_get_calibration_ffc_iterm(temp_info->data,
+							       iterm);
+}
+EXPORT_SYMBOL(platform_fg_ops_get_calibration_ffc_iterm);
+
+int platform_fg_ops_get_calibration_charge_energy(unsigned int ic_role,
+						  int *charge_energy)
+{
+	CLASS(mca_callback, callback_scope)(&mca_ic_callbacks);
+
+	struct fuelguage_info *temp_info = platform_get_fg_ic_ops(ic_role);
+
+	if (platform_fg_ops_invalid(temp_info,
+				    fg_ic_get_calibration_charge_energy))
+		return -EOPNOTSUPP;
+
+	return temp_info->ops->fg_ic_get_calibration_charge_energy(
+		temp_info->data, charge_energy);
+}
+EXPORT_SYMBOL(platform_fg_ops_get_calibration_charge_energy);
+
+void platform_fg_ops_fl4p0_enable_check(unsigned int ic_role)
+{
+	CLASS(mca_callback, callback_scope)(&mca_ic_callbacks);
+
+	struct fuelguage_info *temp_info = platform_get_fg_ic_ops(ic_role);
+
+	if (platform_fg_ops_invalid(temp_info, fg_ic_fl4p0_enable_check))
+		return;
+
+	temp_info->ops->fg_ic_fl4p0_enable_check(temp_info->data);
 }
 EXPORT_SYMBOL(platform_fg_ops_fl4p0_enable_check);
 
-void platform_fg_ops_update_fw(unsigned int role)
+void platform_fg_ops_update_fw(unsigned int ic_role)
 {
-	struct mca_fg_ops_data *d = mca_fg_get(role);
-	if (d && d->ops->fg_ic_update_fw)
-		d->ops->fg_ic_update_fw(d->data);
+	CLASS(mca_callback, callback_scope)(&mca_ic_callbacks);
+
+	struct fuelguage_info *temp_info = platform_get_fg_ic_ops(ic_role);
+
+	if (platform_fg_ops_invalid(temp_info, fg_ic_update_fw))
+		return;
+
+	temp_info->ops->fg_ic_update_fw(temp_info->data);
 }
 EXPORT_SYMBOL(platform_fg_ops_update_fw);
 
-int platform_fg_ops_get_device_name(unsigned int role, const char **name)
+int platform_fg_ops_get_device_name(unsigned int ic_role, const char **name)
 {
-	struct mca_fg_ops_data *d = mca_fg_get(role);
-	if (!name)
-		return -EINVAL;
-	if (!d || !d->ops->fg_ic_get_device_name)
+	CLASS(mca_callback, callback_scope)(&mca_ic_callbacks);
+
+	struct fuelguage_info *temp_info = platform_get_fg_ic_ops(ic_role);
+
+	if (platform_fg_ops_invalid(temp_info, fg_ic_get_device_name))
 		return -EOPNOTSUPP;
-	return d->ops->fg_ic_get_device_name(d->data, name);
+
+	return temp_info->ops->fg_ic_get_device_name(temp_info->data, name);
 }
 EXPORT_SYMBOL(platform_fg_ops_get_device_name);
 
-void platform_fg_ops_set_force_report_full(unsigned int role)
+int platform_fg_ops_get_temp_min(unsigned int ic_role, int *temp_min)
 {
-	struct mca_fg_ops_data *d = mca_fg_get(role);
-	if (d && d->ops->fg_ic_set_force_report_full)
-		d->ops->fg_ic_set_force_report_full(d->data);
+	CLASS(mca_callback, callback_scope)(&mca_ic_callbacks);
+
+	struct fuelguage_info *temp_info = platform_get_fg_ic_ops(ic_role);
+
+	if (platform_fg_ops_invalid(temp_info, fg_ic_get_temp_min))
+		return -EOPNOTSUPP;
+
+	return temp_info->ops->fg_ic_get_temp_min(temp_info->data, temp_min);
+}
+EXPORT_SYMBOL(platform_fg_ops_get_temp_min);
+
+void platform_fg_ops_set_force_report_full(unsigned int ic_role)
+{
+	CLASS(mca_callback, callback_scope)(&mca_ic_callbacks);
+
+	struct fuelguage_info *temp_info = platform_get_fg_ic_ops(ic_role);
+
+	if (platform_fg_ops_invalid(temp_info, fg_ic_set_force_report_full))
+		return;
+
+	temp_info->ops->fg_ic_set_force_report_full(temp_info->data);
 }
 EXPORT_SYMBOL(platform_fg_ops_set_force_report_full);
 
-void platform_fg_ops_get_ui_soh(unsigned int role, int *ui_soh)
+int platform_fg_ops_get_fc(unsigned int ic_role, bool *fc)
 {
-	struct mca_fg_ops_data *d = mca_fg_get(role);
-	if (ui_soh && d && d->ops->fg_ic_get_ui_soh)
-		d->ops->fg_ic_get_ui_soh(d->data, ui_soh);
+	CLASS(mca_callback, callback_scope)(&mca_ic_callbacks);
+
+	struct fuelguage_info *temp_info = platform_get_fg_ic_ops(ic_role);
+
+	if (platform_fg_ops_invalid(temp_info, fg_ic_get_fc))
+		return -EOPNOTSUPP;
+
+	return temp_info->ops->fg_ic_get_fc(temp_info->data, fc);
+}
+EXPORT_SYMBOL(platform_fg_ops_get_fc);
+
+int platform_fg_ops_set_co(unsigned int ic_role, bool value)
+{
+	CLASS(mca_callback, callback_scope)(&mca_ic_callbacks);
+
+	struct fuelguage_info *temp_info = platform_get_fg_ic_ops(ic_role);
+
+	if (platform_fg_ops_invalid(temp_info, fg_ic_set_co))
+		return -EOPNOTSUPP;
+
+	return temp_info->ops->fg_ic_set_co(temp_info->data, value);
+}
+EXPORT_SYMBOL(platform_fg_ops_set_co);
+
+void platform_fg_ops_get_ui_soh(unsigned int ic_role, int *ui_soh)
+{
+	CLASS(mca_callback, callback_scope)(&mca_ic_callbacks);
+
+	struct fuelguage_info *temp_info = platform_get_fg_ic_ops(ic_role);
+
+	if (platform_fg_ops_invalid(temp_info, fg_ic_get_ui_soh))
+		return;
+
+	temp_info->ops->fg_ic_get_ui_soh(temp_info->data, ui_soh);
 }
 EXPORT_SYMBOL(platform_fg_ops_get_ui_soh);
 
-unsigned long platform_fg_ops_get_calc_rvalue(unsigned int role)
+unsigned long platform_fg_ops_get_calc_rvalue(unsigned int ic_role)
 {
-	struct mca_fg_ops_data *d = mca_fg_get(role);
-	if (!d || !d->ops->fg_ic_get_calc_rvalue)
-		return 0;
-	return d->ops->fg_ic_get_calc_rvalue(d->data);
+	CLASS(mca_callback, callback_scope)(&mca_ic_callbacks);
+
+	struct fuelguage_info *temp_info = platform_get_fg_ic_ops(ic_role);
+
+	if (platform_fg_ops_invalid(temp_info, fg_ic_get_calc_rvalue))
+		return -EOPNOTSUPP;
+
+	return temp_info->ops->fg_ic_get_calc_rvalue(temp_info->data);
 }
 EXPORT_SYMBOL(platform_fg_ops_get_calc_rvalue);
 
-void platform_fg_ops_get_batt_abnormal_info(unsigned int role, int *info)
+int platform_fg_ops_get_pack_vendor(unsigned int ic_role, int *vendor)
 {
-	struct mca_fg_ops_data *d = mca_fg_get(role);
-	if (info && d && d->ops->fg_ic_get_batt_abnormal_info)
-		d->ops->fg_ic_get_batt_abnormal_info(d->data, info);
+	CLASS(mca_callback, callback_scope)(&mca_ic_callbacks);
+
+	struct fuelguage_info *temp_info = platform_get_fg_ic_ops(ic_role);
+
+	if (platform_fg_ops_invalid(temp_info, fg_ic_get_pack_vendor))
+		return -EOPNOTSUPP;
+
+	return temp_info->ops->fg_ic_get_pack_vendor(temp_info->data, vendor);
+}
+EXPORT_SYMBOL(platform_fg_ops_get_pack_vendor);
+
+int platform_fg_ops_get_original_temp(unsigned int ic_role, int *temp)
+{
+	CLASS(mca_callback, callback_scope)(&mca_ic_callbacks);
+
+	struct fuelguage_info *temp_info = platform_get_fg_ic_ops(ic_role);
+
+	if (platform_fg_ops_invalid(temp_info, fg_ic_get_original_temp))
+		return -EOPNOTSUPP;
+
+	return temp_info->ops->fg_ic_get_original_temp(temp_info->data, temp);
+}
+EXPORT_SYMBOL(platform_fg_ops_get_original_temp);
+
+int platform_fg_ops_get_average_current(unsigned int ic_role, int *curr)
+{
+	CLASS(mca_callback, callback_scope)(&mca_ic_callbacks);
+
+	struct fuelguage_info *temp_info = platform_get_fg_ic_ops(ic_role);
+
+	if (platform_fg_ops_invalid(temp_info, fg_ic_get_average_current))
+		return -EOPNOTSUPP;
+
+	return temp_info->ops->fg_ic_get_average_current(temp_info->data, curr);
+}
+EXPORT_SYMBOL(platform_fg_ops_get_average_current);
+
+int platform_fg_ops_get_ota_update_flag(unsigned int ic_role, int *flag)
+{
+	CLASS(mca_callback, callback_scope)(&mca_ic_callbacks);
+
+	struct fuelguage_info *temp_info = platform_get_fg_ic_ops(ic_role);
+
+	if (platform_fg_ops_invalid(temp_info, fg_ic_get_ota_update_flag))
+		return -EOPNOTSUPP;
+
+	return temp_info->ops->fg_ic_get_ota_update_flag(temp_info->data, flag);
+}
+EXPORT_SYMBOL(platform_fg_ops_get_ota_update_flag);
+
+int platform_fg_ops_ota_update_check(unsigned int ic_role)
+{
+	CLASS(mca_callback, callback_scope)(&mca_ic_callbacks);
+
+	struct fuelguage_info *temp_info = platform_get_fg_ic_ops(ic_role);
+
+	if (platform_fg_ops_invalid(temp_info, fg_ic_ota_update_check))
+		return -EOPNOTSUPP;
+
+	return temp_info->ops->fg_ic_ota_update_check(temp_info->data);
+}
+EXPORT_SYMBOL(platform_fg_ops_ota_update_check);
+
+void platform_fg_ops_get_batt_abnormal_info(unsigned int ic_role, int *info)
+{
+	CLASS(mca_callback, callback_scope)(&mca_ic_callbacks);
+
+	struct fuelguage_info *temp_info = platform_get_fg_ic_ops(ic_role);
+
+	if (platform_fg_ops_invalid(temp_info, fg_ic_get_batt_abnormal_info))
+		return;
+
+	temp_info->ops->fg_ic_get_batt_abnormal_info(temp_info->data, info);
 }
 EXPORT_SYMBOL(platform_fg_ops_get_batt_abnormal_info);
 
-int platform_fg_ops_get_first_usage_date(unsigned int role, u8 *buf)
+int platform_fg_ops_get_first_usage_date(unsigned int ic_role, u8 *buf)
 {
-	struct mca_fg_ops_data *d = mca_fg_get(role);
-	if (!buf)
-		return -EINVAL;
-	if (!d || !d->ops->fg_ic_get_first_usage_date)
+	CLASS(mca_callback, callback_scope)(&mca_ic_callbacks);
+
+	struct fuelguage_info *temp_info = platform_get_fg_ic_ops(ic_role);
+
+	if (platform_fg_ops_invalid(temp_info, fg_ic_get_first_usage_date))
 		return -EOPNOTSUPP;
-	return d->ops->fg_ic_get_first_usage_date(d->data, buf);
+
+	return temp_info->ops->fg_ic_get_first_usage_date(temp_info->data, buf);
 }
 EXPORT_SYMBOL(platform_fg_ops_get_first_usage_date);
 
-int platform_fg_ops_get_manufacturing_date(unsigned int role, u8 *buf)
+int platform_fg_ops_get_manufacturing_date(unsigned int ic_role, u8 *buf)
 {
-	struct mca_fg_ops_data *d = mca_fg_get(role);
-	if (!buf)
-		return -EINVAL;
-	if (!d || !d->ops->fg_ic_get_manufacturing_date)
+	CLASS(mca_callback, callback_scope)(&mca_ic_callbacks);
+
+	struct fuelguage_info *temp_info = platform_get_fg_ic_ops(ic_role);
+
+	if (platform_fg_ops_invalid(temp_info, fg_ic_get_manufacturing_date))
 		return -EOPNOTSUPP;
-	return d->ops->fg_ic_get_manufacturing_date(d->data, buf);
+
+	return temp_info->ops->fg_ic_get_manufacturing_date(temp_info->data,
+							    buf);
 }
 EXPORT_SYMBOL(platform_fg_ops_get_manufacturing_date);
 
-void platform_fg_ops_set_first_usage_date(unsigned int role, const char *date)
+void platform_fg_ops_set_first_usage_date(unsigned int ic_role,
+					  const char *date)
 {
-	struct mca_fg_ops_data *d = mca_fg_get(role);
-	if (date && d && d->ops->fg_ic_set_first_usage_date)
-		d->ops->fg_ic_set_first_usage_date(d->data, date);
+	CLASS(mca_callback, callback_scope)(&mca_ic_callbacks);
+
+	struct fuelguage_info *temp_info = platform_get_fg_ic_ops(ic_role);
+
+	if (platform_fg_ops_invalid(temp_info, fg_ic_set_first_usage_date))
+		return;
+
+	temp_info->ops->fg_ic_set_first_usage_date(temp_info->data, date);
 }
 EXPORT_SYMBOL(platform_fg_ops_set_first_usage_date);
 
-void platform_fg_ops_qbg_send_chg_data(unsigned int role)
+void platform_fg_ops_qbg_send_chg_data(unsigned int ic_role)
 {
-	struct mca_fg_ops_data *d = mca_fg_get(role);
-	if (d && d->ops->fg_ic_qbg_send_chg_data)
-		d->ops->fg_ic_qbg_send_chg_data(d->data);
+	CLASS(mca_callback, callback_scope)(&mca_ic_callbacks);
+
+	struct fuelguage_info *temp_info = platform_get_fg_ic_ops(ic_role);
+
+	if (platform_fg_ops_invalid(temp_info, fg_ic_qbg_send_chg_data))
+		return;
+
+	temp_info->ops->fg_ic_qbg_send_chg_data(temp_info->data);
 }
 EXPORT_SYMBOL(platform_fg_ops_qbg_send_chg_data);
 
-MODULE_DESCRIPTION("Xiaomi MCA fuel-gauge ops dispatcher");
+static struct platform_driver platform_fg_ops_driver = {
+	.driver	= {
+		.name = "platform_fg_ops",
+	},
+};
+
+module_platform_driver(platform_fg_ops_driver);
+MODULE_DESCRIPTION("platform fg ops");
+MODULE_AUTHOR("liyuze1@xiaomi.com");
 MODULE_LICENSE("GPL v2");

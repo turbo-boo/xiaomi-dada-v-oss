@@ -1,49 +1,39 @@
 // SPDX-License-Identifier: GPL-2.0
-#include <linux/ctype.h>
-#include <linux/errno.h>
-#include <linux/module.h>
-#include <linux/of.h>
+/*
+ * mca_pd_auth.c
+ *
+ * pd adapter private auth driver
+ *
+ * Copyright (c) 2023-2023 Xiaomi Technologies Co., Ltd.
+ *
+ * This software is licensed under the terms of the GNU General Public
+ * License version 2, as published by the Free Software Foundation, and
+ * may be copied, distributed, and modified under those terms.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+ * GNU General Public License for more details.
+ *
+ */
 #include <linux/platform_device.h>
-#include <linux/slab.h>
-#include <linux/string.h>
+#include <linux/of.h>
 
-#include <mca/common/mca_charge_mievent.h>
-#include <mca/common/mca_event.h>
+#include <mca/protocol/protocol_pd_class.h>
 #include <mca/common/mca_log.h>
 #include <mca/common/mca_sysfs.h>
+#include <mca/common/mca_event.h>
+#include <mca/common/mca_charge_mievent.h>
 #include <mca/platform/platform_buckchg_class.h>
-#include <mca/protocol/protocol_pd_class.h>
+#include "pd_auth.h"
+#include <linux/power_supply.h>
+#include <mca/common/mca_charge_interface.h>
 
 #ifndef MCA_LOG_TAG
 #define MCA_LOG_TAG "pd_auth"
 #endif
 
-#define PD_ROLE_SINK_FOR_ADAPTER 0
-#define PD_ROLE_SOURCE_FOR_ADAPTER 1
-#define PD_AUTH_UVDM_AUTH_DATA_LEN 16
-#define PD_AUTH_UVDM_AUTH_STR_LEN 128
-#define PD_AUTH_VDM_CMD_HEX_DATA_LEN 40
-#define XM_ADAPTER_SVID 0x2717
-
-enum pd_auth_attr_list {
-	PD_AUTH_NAME = 0,
-	PD_AUTH_REQUEST_VDM_CMD,
-	PD_AUTH_CURRENT_STATE,
-	PD_AUTH_ADAPTER_ID,
-	PD_AUTH_ADAPTER_SVID,
-	PD_AUTH_VERIFY_PROCESS,
-	PD_AUTH_USBPD_VERIFIED,
-	PD_AUTH_CURRENT_PR,
-	PD_AUTH_IS_PD_ADAPTER,
-	PD_AUTH_USBPD_DATA_ROLE,
-};
-
-struct pd_auth_strategy {
-	struct device *dev;
-	int verify_porcess_end;
-	int pd_verified_type;
-};
-
+#ifdef CONFIG_SYSFS
 static ssize_t strategy_pd_auth_sysfs_show(struct device *dev,
 					   struct device_attribute *attr,
 					   char *buf);
@@ -74,222 +64,224 @@ static struct mca_sysfs_attr_info strategy_pd_auth_sysfs_field_tbl[] = {
 };
 
 #define PD_AUTH_ATTRS_SIZE ARRAY_SIZE(strategy_pd_auth_sysfs_field_tbl)
+
 static struct attribute *strategy_pd_auth_sysfs_attrs[PD_AUTH_ATTRS_SIZE + 1];
+
 static const struct attribute_group strategy_pd_auth_sysfs_attr_group = {
 	.attrs = strategy_pd_auth_sysfs_attrs,
 };
 
 static int strategy_pd_auth_get_vdm_cmd(char *buf, int active_port)
 {
-	struct usbpd_vdm_data vdm_data = { 0 };
+	int i;
+	int cmd;
 	char data[PD_AUTH_UVDM_AUTH_DATA_LEN] = { 0 };
 	char str_buf[PD_AUTH_UVDM_AUTH_STR_LEN] = { 0 };
-	int cmd = USBPD_UVDM_DISCONNECT;
-	int i, ret;
+	struct usbpd_vdm_data vdm_data;
 
-	ret = protocol_class_pd_get_vdm_cmd(active_port, &cmd, &vdm_data);
-	if (ret)
-		return ret;
-
+	protocol_class_pd_get_vdm_cmd(active_port, &cmd, &vdm_data);
 	switch (cmd) {
 	case USBPD_UVDM_CHARGER_VERSION:
-		return sysfs_emit(buf, "%d,%x\n", cmd, vdm_data.ta_version);
+		return snprintf(buf, PAGE_SIZE, "%d,%x\n", cmd,
+				vdm_data.ta_version);
 	case USBPD_UVDM_CHARGER_TEMP:
-		return sysfs_emit(buf, "%d,%d\n", cmd, vdm_data.ta_temp);
+		return snprintf(buf, PAGE_SIZE, "%d,%d\n", cmd,
+				vdm_data.ta_temp);
 	case USBPD_UVDM_CHARGER_VOLTAGE:
-		return sysfs_emit(buf, "%d,%d\n", cmd, vdm_data.ta_voltage);
+		return snprintf(buf, PAGE_SIZE, "%d,%d\n", cmd,
+				vdm_data.ta_voltage);
 	case USBPD_UVDM_SESSION_SEED:
 	case USBPD_UVDM_CONNECT:
 	case USBPD_UVDM_DISCONNECT:
 	case USBPD_UVDM_VERIFIED:
 	case USBPD_UVDM_REMOVE_COMPENSATION:
 	case USBPD_UVDM_NAN_ACK:
-		return sysfs_emit(buf, "%d,Null\n", cmd);
+		return snprintf(buf, PAGE_SIZE, "%d,Null\n", cmd);
 	case USBPD_UVDM_REVERSE_AUTHEN:
-		return sysfs_emit(buf, "%d,%d\n", cmd, vdm_data.reauth);
+		return snprintf(buf, PAGE_SIZE, "%d,%d", cmd, vdm_data.reauth);
 	case USBPD_UVDM_AUTHENTICATION:
 		for (i = 0; i < USBPD_UVDM_AUTH_WORDS; i++) {
-			scnprintf(data, sizeof(data), "%08lx",
-				  vdm_data.s_secert[USBPD_UVDM_AUTH_FIRST + i]);
+			memset(data, 0, sizeof(data));
+			snprintf(data, sizeof(data), "%08lx",
+				 vdm_data.s_secert[USBPD_UVDM_AUTH_FIRST + i]);
 			strlcat(str_buf, data, sizeof(str_buf));
 		}
-		return sysfs_emit(buf, "%d,%s\n", cmd, str_buf);
+		return snprintf(buf, PAGE_SIZE, "%d,%s\n", cmd, str_buf);
 	default:
 		if ((cmd >= USBPD_UVDM_CMD_INIT &&
 		     cmd <= USBPD_UVDM_CMD_INIT + USBPD_UVDM_CONNECT) ||
 		    (cmd >= USBPD_UVDM_CMD_NAK &&
 		     cmd <= USBPD_UVDM_CMD_NAK + USBPD_UVDM_CONNECT))
-			return sysfs_emit(buf, "%d,Null\n", cmd);
-		mca_log_err("feedback cmd:%d is not supported\n", cmd);
-		return sysfs_emit(buf, "%d,\n", cmd);
+			return snprintf(buf, PAGE_SIZE, "%d,Null\n", cmd);
+		mca_log_err("feedbak cmd:%d is not support\n", cmd);
+		break;
 	}
+
+	return snprintf(buf, PAGE_SIZE, "%d,%s\n", cmd, str_buf);
 }
 
 static int strategy_pd_auth_is_pd_adapter(char *buf, int active_port)
 {
 	struct pd_pdo received_pdos[PROTOCOL_PD_MAX_PDO_NUMS] = { 0 };
 
-	if (protocol_class_pd_get_pdos(active_port, received_pdos,
-				       PROTOCOL_PD_MAX_PDO_NUMS))
-		return sysfs_emit(buf, "false\n");
-	return sysfs_emit(buf, "%s\n",
-			  received_pdos[1].max_volt ? "true" : "false");
+	protocol_class_pd_get_pdos(active_port, received_pdos,
+				   PROTOCOL_PD_MAX_PDO_NUMS);
+
+	if (received_pdos[1].max_volt)
+		return snprintf(buf, PAGE_SIZE, "true\n");
+
+	return snprintf(buf, PAGE_SIZE, "false\n");
 }
 
 static ssize_t strategy_pd_auth_sysfs_show(struct device *dev,
 					   struct device_attribute *attr,
 					   char *buf)
 {
-	struct pd_auth_strategy *info = dev_get_drvdata(dev);
-	struct mca_sysfs_attr_info *attr_info;
-	unsigned int adapter_id = 0, adapter_svid = 0;
-	unsigned char role = 0;
-	char current_state[PROTOCOL_PD_MAX_STRING_LEN] = { 0 };
+	int len;
+	unsigned int adapter_id = 0;
+	unsigned int adapter_svid = 0;
+	int verify_process = 0;
+	int verifed = 0;
 	int active_port = protocol_class_pd_get_port_num();
-	int verify_process = 0, verified = 0;
+	unsigned char role = 0;
+	struct mca_sysfs_attr_info *attr_info;
+	struct pd_auth_strategy *info = dev_get_drvdata(dev);
+	char current_state[PROTOCOL_PD_MAX_STRING_LEN] = { 0 };
 
 	if (!info)
-		return -ENODEV;
+		return -1;
+
 	attr_info = mca_sysfs_lookup_attr(attr->attr.name,
 					  strategy_pd_auth_sysfs_field_tbl,
 					  PD_AUTH_ATTRS_SIZE);
 	if (!attr_info)
-		return -EINVAL;
+		return -1;
 
 	switch (attr_info->sysfs_attr_name) {
 	case PD_AUTH_NAME:
-		return 0;
+		len = 0;
+		break;
 	case PD_AUTH_REQUEST_VDM_CMD:
-		return strategy_pd_auth_get_vdm_cmd(buf, active_port);
+		len = strategy_pd_auth_get_vdm_cmd(buf, active_port);
+		break;
 	case PD_AUTH_CURRENT_STATE:
-		(void)protocol_class_pd_get_current_state(active_port, current_state,
-						     sizeof(current_state));
-		return sysfs_emit(buf, "%s\n", current_state);
+		(void)protocol_class_pd_get_current_state(
+			active_port, current_state, PROTOCOL_PD_MAX_STRING_LEN);
+		len = snprintf(buf, PAGE_SIZE, "%s\n", current_state);
+		break;
 	case PD_AUTH_ADAPTER_ID:
-		(void)protocol_class_pd_get_adapter_id(active_port, &adapter_id);
-		return sysfs_emit(buf, "%08x\n", adapter_id);
+		(void)protocol_class_pd_get_adapter_id(active_port,
+						       &adapter_id);
+		len = snprintf(buf, PAGE_SIZE, "%08x\n", adapter_id);
+		break;
 	case PD_AUTH_ADAPTER_SVID:
-		(void)protocol_class_pd_get_adapter_svid(active_port, &adapter_svid);
-		return sysfs_emit(buf, "%04x\n", adapter_svid);
+		(void)protocol_class_pd_get_adapter_svid(active_port,
+							 &adapter_svid);
+		len = snprintf(buf, PAGE_SIZE, "%04x\n", adapter_svid);
+		break;
 	case PD_AUTH_VERIFY_PROCESS:
-		(void)protocol_class_pd_get_verify_process(active_port, &verify_process);
-		return sysfs_emit(buf, "%d\n", verify_process);
+		(void)protocol_class_pd_get_verify_process(active_port,
+							   &verify_process);
+		len = snprintf(buf, PAGE_SIZE, "%d\n", verify_process);
+		break;
 	case PD_AUTH_USBPD_VERIFIED:
-		(void)protocol_class_pd_get_pd_verifed(active_port, &verified);
-		return sysfs_emit(buf, "%d\n", verified);
+		protocol_class_pd_get_pd_verifed(active_port, &verifed);
+		len = snprintf(buf, PAGE_SIZE, "%d\n", verifed);
+		break;
 	case PD_AUTH_CURRENT_PR:
 		if (protocol_class_pd_get_power_role(active_port, &role))
-			return sysfs_emit(buf, "none\n");
+			len = snprintf(buf, PAGE_SIZE, "none\n");
 		if (role == PD_ROLE_SINK_FOR_ADAPTER)
-			return sysfs_emit(buf, "sink\n");
-		if (role == PD_ROLE_SOURCE_FOR_ADAPTER)
-			return sysfs_emit(buf, "source\n");
-		return sysfs_emit(buf, "none\n");
+			len = snprintf(buf, PAGE_SIZE, "sink\n");
+		else if (role == PD_ROLE_SOURCE_FOR_ADAPTER)
+			len = snprintf(buf, PAGE_SIZE, "source\n");
+		break;
 	case PD_AUTH_IS_PD_ADAPTER:
-		return strategy_pd_auth_is_pd_adapter(buf, active_port);
+		len = strategy_pd_auth_is_pd_adapter(buf, active_port);
+		break;
 	case PD_AUTH_USBPD_DATA_ROLE:
-		if (protocol_class_pd_get_data_role(active_port, &role))
-			return sysfs_emit(buf, "unknown\n");
+		protocol_class_pd_get_data_role(active_port, &role);
 		if (role == XM_REQUEST_PD_DR_UFP)
-			return sysfs_emit(buf, "ufp\n");
-		if (role == XM_REQUEST_PD_DR_DFP)
-			return sysfs_emit(buf, "dfp\n");
-		return sysfs_emit(buf, "unknown\n");
+			len = snprintf(buf, PAGE_SIZE, "ufp\n");
+		else if (role == XM_REQUEST_PD_DR_DFP)
+			len = snprintf(buf, PAGE_SIZE, "dfp\n");
+		else
+			len = snprintf(buf, PAGE_SIZE, "unknown\n");
+		break;
 	default:
-		return 0;
+		len = 0;
+		break;
 	}
+
+	return len;
 }
 
-static int pd_auth_hex_nibble(char c)
+static int strategy_pd_auth_string2hex(char *str, unsigned char *out,
+				       unsigned int *outlen)
 {
-	if (c >= '0' && c <= '9')
-		return c - '0';
-	if (c >= 'a' && c <= 'f')
-		return c - 'a' + 10;
-	if (c >= 'A' && c <= 'F')
-		return c - 'A' + 10;
-	return -EINVAL;
-}
+	char *p = str;
+	char high = 0, low = 0;
+	int tmplen = strlen(p), cnt = 0;
 
-static int strategy_pd_auth_string2hex(const char *str, unsigned char *out,
-				       size_t out_size, unsigned int *outlen)
-{
-	size_t len, i = 0, n = 0;
-
-	if (!str || !out || !outlen)
-		return -EINVAL;
-	len = strcspn(str, "\r\n");
-	if (!len || len > out_size * 2)
-		return -EINVAL;
-
-	if (len & 1) {
-		int low = pd_auth_hex_nibble(str[0]);
-		if (low < 0)
-			return low;
-		out[n++] = low;
-		i = 1;
+	tmplen = strlen(p);
+	while (cnt < (tmplen / 2)) {
+		high = ((*p > '9') && ((*p <= 'F') || (*p <= 'f'))) ?
+			       *p - 48 - 7 :
+			       *p - 48;
+		low = (*(++p) > '9' && ((*p <= 'F') || (*p <= 'f'))) ?
+			      *(p)-48 - 7 :
+			      *(p)-48;
+		out[cnt] = ((high & 0x0f) << 4 | (low & 0x0f));
+		p++;
+		cnt++;
 	}
-	for (; i < len; i += 2) {
-		int high = pd_auth_hex_nibble(str[i]);
-		int low = pd_auth_hex_nibble(str[i + 1]);
-		if (high < 0 || low < 0)
-			return -EINVAL;
-		out[n++] = (high << 4) | low;
-	}
-	*outlen = n;
-	return 0;
+	if (tmplen % 2 != 0)
+		out[cnt] = ((*p > '9') && ((*p <= 'F') || (*p <= 'f'))) ?
+				   *p - 48 - 7 :
+				   *p - 48;
+
+	if (outlen != NULL)
+		*outlen = tmplen / 2 + tmplen % 2;
+
+	return tmplen / 2 + tmplen % 2;
 }
 
 static int strategy_pd_auth_set_vdm_cmd(const char *buf, int active_port)
 {
-	unsigned char data[PD_AUTH_VDM_CMD_HEX_DATA_LEN] = { 0 };
-	char *tmp, *payload;
-	unsigned int byte_count = 0;
 	int cmd, ret;
+	unsigned char buffer[PROTOCOL_PD_MAX_STRING_LEN];
+	unsigned char data[PD_AUTH_VDM_CMD_HEX_DATA_LEN] = { 0 };
+	unsigned int count;
 
-	tmp = kstrdup(buf, GFP_KERNEL);
-	if (!tmp)
-		return -ENOMEM;
-	payload = strchr(tmp, ',');
-	if (!payload) {
-		ret = -EINVAL;
-		goto out;
-	}
-	*payload++ = '\0';
-	if (kstrtoint(strim(tmp), 10, &cmd)) {
-		ret = -EINVAL;
-		goto out;
-	}
-	payload = strim(payload);
-	if (sysfs_streq(payload, "Null")) {
-		byte_count = 0;
-	} else {
-		ret = strategy_pd_auth_string2hex(payload, data, sizeof(data),
-						  &byte_count);
-		if (ret)
-			goto out;
-	}
+	ret = sscanf(buf, "%d,%s\n", &cmd, buffer);
+	if (!ret)
+		return ret;
 
-	/* The stock transport length is a byte count, not a u32-word count. */
-	ret = protocol_class_pd_request_vdm_cmd(active_port, cmd,
-						(unsigned int *)data, byte_count);
-out:
-	kfree(tmp);
-	return ret;
+	mca_log_info("buf:%s cmd:%d, buffer:%s\n", buf, cmd, buffer);
+
+	strategy_pd_auth_string2hex(buffer, data, &count);
+	(void)protocol_class_pd_request_vdm_cmd(active_port, cmd,
+						(unsigned int *)data, count);
+
+	return 0;
 }
 
+#define XM_ADAPTER_SVID 0x2717
 static void strategy_pd_auth_fail_report_dfx(void)
 {
 	int active_port = protocol_class_pd_get_port_num();
-	unsigned int adapter_id = 0, adapter_svid = 0;
+	unsigned int adapter_id = 0;
+	unsigned int adapter_svid = 0;
 	int online = 0;
 
 	(void)platform_class_buckchg_ops_get_online(MAIN_BUCK_CHARGER, &online);
 	if (!online)
 		return;
+
 	(void)protocol_class_pd_get_adapter_svid(active_port, &adapter_svid);
 	if (adapter_svid != XM_ADAPTER_SVID)
 		return;
+
 	(void)protocol_class_pd_get_adapter_id(active_port, &adapter_id);
 	mca_charge_mievent_report(CHARGE_DFX_PD_AUTH_FAILED, &adapter_id, 1);
 }
@@ -300,94 +292,121 @@ static ssize_t strategy_pd_auth_sysfs_store(struct device *dev,
 {
 	struct pd_auth_strategy *info = dev_get_drvdata(dev);
 	struct mca_sysfs_attr_info *attr_info;
+	int value = 0;
 	int active_port = protocol_class_pd_get_port_num();
-	int value = 0, ret = 0;
 
 	if (!info)
-		return -ENODEV;
+		return -1;
+
 	attr_info = mca_sysfs_lookup_attr(attr->attr.name,
 					  strategy_pd_auth_sysfs_field_tbl,
 					  PD_AUTH_ATTRS_SIZE);
 	if (!attr_info)
-		return -EINVAL;
+		return -1;
 
 	switch (attr_info->sysfs_attr_name) {
 	case PD_AUTH_REQUEST_VDM_CMD:
-		ret = strategy_pd_auth_set_vdm_cmd(buf, active_port);
+		if (strategy_pd_auth_set_vdm_cmd(buf, active_port))
+			return -1;
 		break;
 	case PD_AUTH_VERIFY_PROCESS:
-		if (kstrtoint(buf, 10, &value))
+		if (sscanf(buf, "%d\n", &value) != 1) {
+			mca_log_err("verify process value invalid %s\n", buf);
 			return -EINVAL;
-		ret = protocol_class_pd_set_verify_process(active_port, value);
-		if (!ret) {
+		}
+		(void)protocol_class_pd_set_verify_process(active_port, value);
+		if (info->verify_porcess_end != value)
 			info->verify_porcess_end = value;
-			if (!value)
-				mca_event_block_notify(
-					MCA_EVENT_TYPE_CHARGE_TYPE,
-					MCA_EVENT_CHARGE_VERIFY_PROCESS_END,
-					&info->verify_porcess_end);
+		if (!value) {
+			mca_event_block_notify(
+				MCA_EVENT_TYPE_CHARGE_TYPE,
+				MCA_EVENT_CHARGE_VERIFY_PROCESS_END,
+				&info->verify_porcess_end);
 		}
 		break;
 	case PD_AUTH_USBPD_VERIFIED:
-		if (kstrtoint(buf, 10, &value))
+		if (sscanf(buf, "%d\n", &value) != 1) {
+			mca_log_err("verified value invalid %s\n", buf);
 			return -EINVAL;
-		ret = protocol_class_pd_set_pd_verifed(active_port, value);
-		if (!ret && value) {
+		}
+		mca_log_info("set pd verified %d\n", value);
+		(void)protocol_class_pd_set_pd_verifed(active_port, value);
+		if (value) {
 			info->pd_verified_type = XM_CHARGER_TYPE_PD_VERIFY;
 			mca_event_block_notify(MCA_EVENT_TYPE_CHARGE_TYPE,
 					       MCA_EVENT_CHARGE_TYPE_CHANGE,
 					       &info->pd_verified_type);
-		} else if (!ret) {
+		} else
 			strategy_pd_auth_fail_report_dfx();
-		}
 		break;
 	case PD_AUTH_USBPD_DATA_ROLE:
+		mca_log_info("set data_role: %s\n", buf);
 		if (strncmp(buf, "ufp", 3) == 0)
 			value = XM_REQUEST_PD_DR_UFP;
 		else if (strncmp(buf, "dfp", 3) == 0)
 			value = XM_REQUEST_PD_DR_DFP;
 		else
 			return -EINVAL;
-		ret = protocol_class_pd_request_vdm_cmd(TYPEC_PORT_0,
-							USBPD_UVDM_REQUEST_PD_DR,
-							&value, sizeof(value));
+		protocol_class_pd_request_vdm_cmd(TYPEC_PORT_0,
+						  USBPD_UVDM_REQUEST_PD_DR,
+						  &value, sizeof(value));
 		break;
 	default:
-		return -EACCES;
+		break;
 	}
-	return ret ? ret : count;
+
+	return count;
 }
 
-static int strategy_pd_auth_probe(struct platform_device *pdev)
+static int strategy_pd_auth_create_group(struct device *dev)
 {
-	struct pd_auth_strategy *info;
-	int ret;
-
-	info = devm_kzalloc(&pdev->dev, sizeof(*info), GFP_KERNEL);
-	if (!info)
-		return -ENOMEM;
-	info->dev = &pdev->dev;
-	info->verify_porcess_end = 1;
-	info->pd_verified_type = 0;
-	platform_set_drvdata(pdev, info);
-
 	mca_sysfs_init_attrs(strategy_pd_auth_sysfs_attrs,
 			     strategy_pd_auth_sysfs_field_tbl,
 			     PD_AUTH_ATTRS_SIZE);
-	ret = mca_sysfs_create_link_group(SYSFS_DEV_3, "strategy_pd_auth",
-					  &pdev->dev,
-					  &strategy_pd_auth_sysfs_attr_group);
-	if (ret)
-		return dev_err_probe(&pdev->dev, ret,
-				     "failed to create PD auth sysfs\n");
+	return mca_sysfs_create_link_group("typec", "strategy_pd_auth", dev,
+					   &strategy_pd_auth_sysfs_attr_group);
+}
+
+static void strategy_pd_auth_remove_group(struct device *dev)
+{
+	mca_sysfs_remove_link_group("typec", "strategy_pd_auth", dev,
+				    &strategy_pd_auth_sysfs_attr_group);
+}
+
+#else
+static inline int strategy_pd_auth_create_group(struct device *dev)
+{
+}
+
+static void strategy_pd_auth_remove_group(struct device *dev)
+{
+}
+#endif /* CONFIG_SYSFS */
+
+static int strategy_pd_auth_probe(struct platform_device *pdev)
+{
+	struct pd_auth_strategy *pd_auth;
+
+	mca_log_info("probe begin\n");
+	pd_auth = devm_kzalloc(&pdev->dev, sizeof(*pd_auth), GFP_KERNEL);
+	if (!pd_auth) {
+		mca_log_err("out of memory\n");
+		return -ENOMEM;
+	}
+
+	pd_auth->dev = &pdev->dev;
+	pd_auth->verify_porcess_end = 1;
+	pd_auth->pd_verified_type = 0;
+	platform_set_drvdata(pdev, pd_auth);
+	strategy_pd_auth_create_group(pd_auth->dev);
+	mca_log_err("probe end\n");
+
 	return 0;
 }
 
 static int strategy_pd_auth_remove(struct platform_device *pdev)
 {
-	mca_sysfs_remove_link_group(SYSFS_DEV_3, "strategy_pd_auth",
-				    &pdev->dev,
-				    &strategy_pd_auth_sysfs_attr_group);
+	strategy_pd_auth_remove_group(&pdev->dev);
 	return 0;
 }
 
@@ -395,22 +414,36 @@ static void strategy_pd_auth_shutdown(struct platform_device *pdev)
 {
 }
 
-static const struct of_device_id strategy_pd_auth_match[] = {
+static const struct of_device_id match_table[] = {
 	{ .compatible = "mca,strategy_pd_auth" },
 	{},
 };
-MODULE_DEVICE_TABLE(of, strategy_pd_auth_match);
 
 static struct platform_driver strategy_pd_auth_driver = {
 	.driver = {
+		.owner = THIS_MODULE,
 		.name = "strategy_pd_auth",
-		.of_match_table = strategy_pd_auth_match,
+		.of_match_table = match_table,
 	},
 	.probe = strategy_pd_auth_probe,
 	.remove = strategy_pd_auth_remove,
 	.shutdown = strategy_pd_auth_shutdown,
 };
-module_platform_driver(strategy_pd_auth_driver);
 
-MODULE_DESCRIPTION("Xiaomi Dada MCA PD authentication strategy");
+static int __init strategy_pd_auth_init(void)
+{
+	return platform_driver_register(&strategy_pd_auth_driver);
+}
+module_init(strategy_pd_auth_init);
+
+static void __exit strategy_pd_auth_exit(void)
+{
+	platform_driver_unregister(&strategy_pd_auth_driver);
+}
+module_exit(strategy_pd_auth_exit);
+
+MODULE_DESCRIPTION("Xiaomi Sub Pmic Protocol");
+MODULE_AUTHOR("yinshunan@xiaomi.com");
 MODULE_LICENSE("GPL v2");
+
+MODULE_DEVICE_TABLE(of, match_table);

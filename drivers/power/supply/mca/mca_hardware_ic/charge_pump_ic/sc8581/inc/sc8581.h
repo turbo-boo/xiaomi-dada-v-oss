@@ -5,7 +5,18 @@
  * charge-pump ic driver
  *
  * Copyright (c) 2023-2023 Xiaomi Technologies Co., Ltd.
+ *
+ * This software is licensed under the terms of the GNU General Public
+ * License version 2, as published by the Free Software Foundation, and
+ * may be copied, distributed, and modified under those terms.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+ * GNU General Public License for more details.
+ *
  */
+
 #ifndef __SC8581_H__
 #define __SC8581_H__
 
@@ -118,6 +129,7 @@ struct sc8581_device {
 	unsigned int revision;
 	unsigned int product_cfg;
 	int cp_role;
+
 	struct delayed_work irq_handle_work;
 	int irq_gpio;
 	int irq;

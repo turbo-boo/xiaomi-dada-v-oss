@@ -10,7 +10,6 @@
 
 struct mca_event_dev {
 	struct device *dev;
-	struct mutex notify_lock;
 };
 
 static struct mca_event_dev *mca_event_dev;
@@ -40,9 +39,7 @@ void mca_event_block_notify(unsigned int type, unsigned long event, void *data)
 {
 	if (!mca_event_dev || type >= MCA_EVENT_TYPE_END)
 		return;
-	mutex_lock(&mca_event_dev->notify_lock);
 	blocking_notifier_call_chain(&mca_event_heads[type], event, data);
-	mutex_unlock(&mca_event_dev->notify_lock);
 }
 EXPORT_SYMBOL(mca_event_block_notify);
 
@@ -106,7 +103,6 @@ static int __init mca_event_init(void)
 		return -ENOMEM;
 	for (i = 0; i < MCA_EVENT_TYPE_END; i++)
 		BLOCKING_INIT_NOTIFIER_HEAD(&mca_event_heads[i]);
-	mutex_init(&mca_event_dev->notify_lock);
 	mca_event_dev->dev = mca_sysfs_create_group("xm_power", "mca_event", &group);
 	/* Notifier functionality remains valid if sysfs creation is unavailable. */
 	return 0;

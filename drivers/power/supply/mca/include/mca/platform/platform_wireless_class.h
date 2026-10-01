@@ -205,4 +205,6 @@ int platform_class_wireless_get_tx_iout(unsigned int role, int *iout);
 int platform_class_wireless_get_tx_vout(unsigned int role, int *vout);
 int platform_class_wireless_get_rx_brg_status(unsigned int role, int *status);
 
+void platform_class_wireless_unregister_ops(unsigned int role, void *data);
+
 #endif
