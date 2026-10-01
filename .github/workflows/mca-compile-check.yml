@@ -141,6 +141,7 @@ jobs:
       - name: Verify packaged modules and compiled Dada bindings
         run: |
           python3 tools/testing/selftests/mca/verify_dada_port.py --kernel-out out
+          python3 tools/testing/selftests/mca/verify_stock_contract.py --kernel-out out
 
       - name: Assert restored MCA layers and stock module names
         if: success()

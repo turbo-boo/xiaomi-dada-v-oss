@@ -482,6 +482,8 @@ struct nuvolta_1652_chg {
 	//fw_bin
 	unsigned char fw_bin[32768];
 	int fw_bin_length;
+	int fw_bin_offset;
+	struct mutex fw_bin_lock;
 
 	int project_vendor;
 	int support_hall;

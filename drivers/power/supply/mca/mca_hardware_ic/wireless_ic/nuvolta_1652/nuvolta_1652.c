@@ -660,6 +660,7 @@ static int nuvolta_1652_erase_fw_data(void *data)
 	struct nuvolta_1652_chg *chip = (struct nuvolta_1652_chg *)data;
 	if (!chip->allow_fw_update)
 		return -EOPNOTSUPP;
+	guard(mutex)(&chip->fw_bin_lock);
 
 	int ret = 0;
 	u8 confirm_data = 0;
@@ -931,27 +932,35 @@ exit:
 
 static int nuvolta_1652_download_fw_from_bin(void *data)
 {
-	int ret = 0;
-	int i = 0;
+	struct nuvolta_1652_chg *chip = data;
+	unsigned char *image;
 	u8 confirm_data = 0;
-	struct nuvolta_1652_chg *chip = (struct nuvolta_1652_chg *)data;
+	int ret, i;
+
 	if (!chip->allow_fw_update)
 		return -EOPNOTSUPP;
-
-
-	mca_log_info("enter download firmware\n");
-	for (i = 0; i < chip->fw_bin_length; ++i)
-		chip->fw_bin[i] = ~(chip->fw_bin[i]);
-
-	mca_log_info("download firmware from bin\n");
-	ret |= nuvolta_1652_get_confirm_data(chip, &confirm_data);
-	ret |= nuvolta_1652_set_confirm_data(chip, 0x00);
-	if (ret < 0)
-		return -1;
-
-	ret = nuvolta_1652_download_fw_data(chip, chip->fw_bin,
-					    chip->fw_bin_length);
-	chip->fw_bin_length = 0;
+	guard(mutex)(&chip->fw_bin_lock);
+	if (chip->fw_bin_length <= 0 ||
+	    chip->fw_bin_length > sizeof(chip->fw_bin) ||
+	    chip->fw_bin_offset != chip->fw_bin_length)
+		return -EINVAL;
+	image = kmemdup(chip->fw_bin, chip->fw_bin_length, GFP_KERNEL);
+	if (!image)
+		return -ENOMEM;
+	/* Preserve the staged bytes so a failed download can be retried. */
+	for (i = 0; i < chip->fw_bin_length; i++)
+		image[i] = ~image[i];
+	ret = nuvolta_1652_get_confirm_data(chip, &confirm_data);
+	if (!ret)
+		ret = nuvolta_1652_set_confirm_data(chip, 0x00);
+	if (!ret)
+		ret = nuvolta_1652_download_fw_data(chip, image,
+						 chip->fw_bin_length);
+	kfree(image);
+	if (!ret) {
+		chip->fw_bin_length = 0;
+		chip->fw_bin_offset = 0;
+	}
 	return ret;
 }
 
@@ -962,6 +971,7 @@ static int nuvolta_1652_download_fw(void *data)
 	struct nuvolta_1652_chg *chip = (struct nuvolta_1652_chg *)data;
 	if (!chip->allow_fw_update)
 		return -EOPNOTSUPP;
+	guard(mutex)(&chip->fw_bin_lock);
 
 
 	mca_log_info("download firmware normal\n");
@@ -980,32 +990,33 @@ static int nuvolta_1652_download_fw(void *data)
 //#ifdef CONFIG_SYSFS
 static int nuvolta_1652_set_fw_bin(const char *buf, int count, void *data)
 {
-	static u16 total_length;
-	static u8 serial_number;
-	static u8 fw_area;
+	struct nuvolta_1652_chg *chip = data;
+	u16 length;
+	u8 area;
 
-	struct nuvolta_1652_chg *chip = (struct nuvolta_1652_chg *)data;
 	if (!chip->allow_fw_update)
 		return -EOPNOTSUPP;
-
-
-	mca_log_info("buf:%s, count:%d\n", buf, count);
-	if (strncmp("length:", buf, 7) == 0) {
-		if (kstrtou16(buf + 7, 10, &total_length))
+	if (!buf || count <= 0)
+		return -EINVAL;
+	guard(mutex)(&chip->fw_bin_lock);
+	if (count >= 7 && !strncmp(buf, "length:", 7)) {
+		if (kstrtou16(buf + 7, 10, &length) || !length ||
+		    length > sizeof(chip->fw_bin))
 			return -EINVAL;
-		chip->fw_bin_length = total_length;
-		serial_number = 0;
-		mca_log_info("total_length:%d, serial_number:%d\n",
-			     total_length, serial_number);
-	} else if (strncmp("area:", buf, 5) == 0) {
-		if (kstrtou8(buf + 5, 10, &fw_area))
+		chip->fw_bin_length = length;
+		chip->fw_bin_offset = 0;
+	} else if (count >= 5 && !strncmp(buf, "area:", 5)) {
+		if (kstrtou8(buf + 5, 10, &area))
 			return -EINVAL;
-		mca_log_info("area:%d\n", fw_area);
+		/* The legacy Dada upload ABI accepts this informational field. */
+		mca_log_info("fw area:%u\n", area);
 	} else {
-		memcpy((chip->fw_bin + serial_number * count), buf, count);
-		serial_number++;
-		mca_log_info("serial_number:%d, count:%d\n", serial_number,
-			     count);
+		if (chip->fw_bin_length <= 0 ||
+		    chip->fw_bin_offset > chip->fw_bin_length ||
+		    count > chip->fw_bin_length - chip->fw_bin_offset)
+			return -EINVAL;
+		memcpy(chip->fw_bin + chip->fw_bin_offset, buf, count);
+		chip->fw_bin_offset += count;
 	}
 	return count;
 }
@@ -3405,6 +3416,7 @@ static int nuvolta_1652_probe(struct i2c_client *client,
 	i2c_set_clientdata(client, chip);
 
 	mutex_init(&chip->i2c_lock);
+	mutex_init(&chip->fw_bin_lock);
 	mutex_init(&chip->wireless_chg_int_lock);
 	mutex_init(&chip->data_transfer_lock);
 
@@ -3525,6 +3537,7 @@ static void nuvolta_1652_remove(struct i2c_client *client)
 
 
 	mutex_destroy(&chip->i2c_lock);
+	mutex_destroy(&chip->fw_bin_lock);
 	mutex_destroy(&chip->wireless_chg_int_lock);
 	mutex_destroy(&chip->data_transfer_lock);
 

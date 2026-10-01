@@ -38,11 +38,29 @@ assert compatibles <= bound, f"Missing Dada OF match: {compatibles - bound}"
 
 if args.kernel_out:
     aliases = set()
+    dependencies = {}
     for p in modules:
         ko = args.kernel_out / p
         assert ko.is_file(), f"Missing packaged module: {p}"
         info = subprocess.check_output(["readelf", "-p", ".modinfo", str(ko)], text=True)
         aliases.update(re.findall(r'alias=of:N[^\n]*?C([^\s]+?)C\*', info))
+        name = re.search(r'name=([^\n]+)', info)[1]
+        dependencies[name] = set(re.search(r'depends=([^\n]*)', info)[1].split(',')) - {''}
+    complete = set()
+    active = []
+
+    def check_dependencies(name):
+        assert name not in active, f"MCA module dependency cycle: {active + [name]}"
+        if name in complete:
+            return
+        active.append(name)
+        for dependency in dependencies[name] & dependencies.keys():
+            check_dependencies(dependency)
+        active.pop()
+        complete.add(name)
+
+    for name in dependencies:
+        check_dependencies(name)
     assert compatibles <= aliases, f"Missing built OF alias: {compatibles - aliases}"
     symvers = args.kernel_out / "Module.symvers"
     assert symvers.is_file() and symvers.stat().st_size, "Full kernel Module.symvers required"

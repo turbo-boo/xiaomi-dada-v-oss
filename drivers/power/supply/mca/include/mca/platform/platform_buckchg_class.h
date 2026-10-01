@@ -96,6 +96,9 @@ struct platform_class_buckchg_ops {
 	int (*get_pack_tbat)(void *data, int *);
 	int (*get_aicl_status)(void *data, int *);
 	int (*set_too_hot_limit)(void *data, int);
+	int (*get_otg_status)(void *data, bool *);
+	int (*get_otg_enable_status)(void *data, int *);
+	int (*get_otg_plugin_status)(void *data, int *);
 };
 
 int platform_class_buckchg_ops_register(unsigned int role, void *data,
@@ -177,6 +180,10 @@ int platform_class_buckchg_ops_get_lpd_uart_control(unsigned int role, int *lpd_
 int platform_class_buckchg_ops_get_pack_vbat(unsigned int role, int *pvbat);
 int platform_class_buckchg_ops_set_eu_model(unsigned int role, bool en);
 int platform_class_buckchg_ops_is_init_ok(unsigned int role);
+bool platform_class_buckchg_is_init_ok(void);
+int platform_class_buckchg_ops_get_otg_status(unsigned int role, bool *status);
+int platform_class_buckchg_ops_get_otg_enable_status(unsigned int role, int *status);
+int platform_class_buckchg_ops_get_otg_plugin_status(unsigned int role, int *status);
 int platform_class_buckchg_ops_set_restart_aicl(unsigned int role, bool en);
 int platform_class_buckchg_ops_get_pack_ibat(unsigned int role, int *ibat);
 int platform_class_buckchg_ops_get_pack_tbat(unsigned int role, int *tbat);

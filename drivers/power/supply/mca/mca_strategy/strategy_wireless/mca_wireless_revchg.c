@@ -39,6 +39,7 @@
 #include "inc/mca_wireless_revchg.h"
 #include <mca/common/mca_log.h>
 #include <mca/common/mca_event.h>
+#include <mca/common/mca_adsp_glink.h>
 #include <mca/common/mca_voter.h>
 #include <mca/common/mca_parse_dts.h>
 #include <mca/platform/platform_wireless_class.h>
@@ -62,20 +63,6 @@ static void mca_wireless_rev_set_reverse_src(int boost_src);
 
 DEFINE_STATIC_SRCU(mca_reverse_callbacks);
 static struct mca_wireless_revchg *g_wls_rev_info;
-
-static ATOMIC_NOTIFIER_HEAD(pen_charge_state_notifier);
-
-int pen_charge_state_notifier_register_client(struct notifier_block *nb)
-{
-	return atomic_notifier_chain_register(&pen_charge_state_notifier, nb);
-}
-EXPORT_SYMBOL(pen_charge_state_notifier_register_client);
-
-int pen_charge_state_notifier_unregister_client(struct notifier_block *nb)
-{
-	return atomic_notifier_chain_unregister(&pen_charge_state_notifier, nb);
-}
-EXPORT_SYMBOL(pen_charge_state_notifier_unregister_client);
 
 static void mca_wireless_user_enable_revchg_work(struct work_struct *work)
 {
@@ -2163,7 +2150,7 @@ static void mca_wireless_rev_process_hall_change(int value,
 		}
 	}
 
-	atomic_notifier_call_chain(&pen_charge_state_notifier, is_pen_attached,
+	mca_pen_charge_state_notify(is_pen_attached,
 				   NULL);
 
 	hall_data[0].event_len = snprintf(hall3_event, MCA_EVENT_NOTIFY_SIZE,

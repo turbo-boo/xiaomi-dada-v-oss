@@ -46,6 +46,32 @@ static struct platform_class_buckchg_data *platform_class_buckchg_get_ops_data(u
 	return srcu_dereference(platform_buckchg_ops_data[role], &mca_provider_callbacks);
 }
 
+bool platform_class_buckchg_is_init_ok(void)
+{
+	CLASS(mca_callback, callback_scope)(&mca_provider_callbacks);
+
+	return platform_class_buckchg_get_ops_data(MAIN_BUCK_CHARGER) != NULL;
+}
+EXPORT_SYMBOL(platform_class_buckchg_is_init_ok);
+
+#define DADA_OTG_GETTER(_name, _type) \
+int platform_class_buckchg_ops_get_##_name(unsigned int role, _type *status) \
+{ \
+	CLASS(mca_callback, callback_scope)(&mca_provider_callbacks); \
+	struct platform_class_buckchg_data *entry = \
+		platform_class_buckchg_get_ops_data(role); \
+	if (!status) \
+		return -EINVAL; \
+	if (platform_class_buckchg_invalid_ops(entry, get_##_name)) \
+		return -EOPNOTSUPP; \
+	return entry->ops->get_##_name(entry->data, status); \
+} \
+EXPORT_SYMBOL(platform_class_buckchg_ops_get_##_name)
+
+DADA_OTG_GETTER(otg_status, bool);
+DADA_OTG_GETTER(otg_enable_status, int);
+DADA_OTG_GETTER(otg_plugin_status, int);
+
 int platform_class_buckchg_ops_register(unsigned int role, void *data, struct platform_class_buckchg_ops *ops)
 {
 	struct platform_class_buckchg_data *entry;

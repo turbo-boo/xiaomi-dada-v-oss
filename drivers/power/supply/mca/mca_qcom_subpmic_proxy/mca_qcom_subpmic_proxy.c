@@ -32,10 +32,11 @@
 #define MCA_LOG_TAG "qcom_subpmic"
 #endif
 
+/* OS2.0.101.0 Dada wire IDs: Onyx-only enum entries must not shift these. */
 enum mca_subpmic_prop {
+	SUBPMIC_PROP_USB_CHARGE_TYPE = 4,
 	SUBPMIC_PROP_SHIP_MODE = 5,
 	SUBPMIC_PROP_SHUTDOWN = 6,
-	SUBPMIC_PROP_TOO_HOT_LIMIT = 7,
 	SUBPMIC_PROP_WLS_INPUT_CURR_LIMIT = 0x1003,
 	SUBPMIC_PROP_WLS_INPUT_SUSPEND = 0x1004,
 	SUBPMIC_PROP_WLS_CURR = 0x1007,
@@ -43,45 +44,40 @@ enum mca_subpmic_prop {
 	SUBPMIC_PROP_CHG_STATUS = 0x2001,
 	SUBPMIC_PROP_CHG_TYPE = 0x2002,
 	SUBPMIC_PROP_ENABLE_CHARGING = 0x2003,
-	SUBPMIC_PROP_BUCK_FSW = 0x2004,
-	SUBPMIC_PROP_CHARGE_CURRENT = 0x2005,
-	SUBPMIC_PROP_TERM_CURRENT = 0x2006,
-	SUBPMIC_PROP_TERM_VOLT = 0x2007,
-	SUBPMIC_PROP_INPUT_CURR_LIMIT = 0x2008,
-	SUBPMIC_PROP_INPUT_VOLT_LIMIT = 0x2009,
-	SUBPMIC_PROP_PRECHG_CURRENT = 0x200a,
-	SUBPMIC_PROP_PRECHG_VOLT = 0x200b,
-	SUBPMIC_PROP_VSYS_VOLT = 0x200c,
-	SUBPMIC_PROP_OTG_BOOST_EN_STATUS = 0x200d,
-	SUBPMIC_PROP_OTG_GATE_EN_STATUS = 0x200e,
-	SUBPMIC_PROP_BOOST_ENABLE = 0x200f,
-	SUBPMIC_PROP_BOOST_VOLTAGE = 0x2010,
-	SUBPMIC_PROP_QC_VOLT = 0x2011,
-	SUBPMIC_PROP_AICL_ENABLE = 0x2012,
-	SUBPMIC_PROP_RERUN_AICL = 0x2013,
-	SUBPMIC_PROP_RESTART_AICL = 0x2014,
-	SUBPMIC_PROP_USB_AICL_CONT_THD = 0x2015,
-	SUBPMIC_PROP_OPT_FWS = 0x2016,
-	SUBPMIC_PROP_USB_ADAP_OVERRIDE = 0x2017,
-	SUBPMIC_PROP_QC3_VOLT = 0x2018,
-	SUBPMIC_PROP_INPUT_SUSPEND = 0x2019,
-	SUBPMIC_PROP_OTG_CFG = 0x201a,
-	SUBPMIC_PROP_CID_CFG = 0x201b,
-	SUBPMIC_PROP_CP_STATE = 0x201c,
-	SUBPMIC_PROP_QC_VOLT_CMD = 0x201d,
-	SUBPMIC_PROP_LPD_SBU1 = 0x201e,
-	SUBPMIC_PROP_LPD_SBU2 = 0x201f,
-	SUBPMIC_PROP_LPD_CC1 = 0x2020,
-	SUBPMIC_PROP_LPD_CC2 = 0x2021,
-	SUBPMIC_PROP_LPD_DP = 0x2022,
-	SUBPMIC_PROP_LPD_DM = 0x2023,
-	SUBPMIC_PROP_LPD_CONTROL = 0x2024,
-	SUBPMIC_PROP_LPD_UART_CONTROL = 0x2025,
-	SUBPMIC_PROP_PACK_VBAT = 0x2026,
-	SUBPMIC_PROP_PACK_IBAT = 0x2027,
-	SUBPMIC_PROP_EU_MODEL = 0x2028,
-	SUBPMIC_PROP_AICL_STATUS = 0x2029,
-	SUBPMIC_PROP_PACK_TBAT = 0x202a,
+	SUBPMIC_PROP_CHARGE_CURRENT = 0x2004,
+	SUBPMIC_PROP_TERM_CURRENT = 0x2005,
+	SUBPMIC_PROP_TERM_VOLT = 0x2006,
+	SUBPMIC_PROP_INPUT_CURR_LIMIT = 0x2007,
+	SUBPMIC_PROP_INPUT_VOLT_LIMIT = 0x2008,
+	SUBPMIC_PROP_PRECHG_CURRENT = 0x2009,
+	SUBPMIC_PROP_PRECHG_VOLT = 0x200a,
+	SUBPMIC_PROP_VSYS_VOLT = 0x200b,
+	SUBPMIC_PROP_OTG_BOOST_EN_STATUS = 0x200c,
+	SUBPMIC_PROP_OTG_GATE_EN_STATUS = 0x200d,
+	SUBPMIC_PROP_BOOST_ENABLE = 0x200e,
+	SUBPMIC_PROP_BOOST_VOLTAGE = 0x200f,
+	SUBPMIC_PROP_QC_VOLT = 0x2010,
+	SUBPMIC_PROP_AICL_ENABLE = 0x2011,
+	SUBPMIC_PROP_RERUN_AICL = 0x2012,
+	SUBPMIC_PROP_USB_AICL_CONT_THD = 0x2013,
+	SUBPMIC_PROP_OPT_FWS = 0x2014,
+	SUBPMIC_PROP_USB_ADAP_OVERRIDE = 0x2015,
+	SUBPMIC_PROP_QC3_VOLT = 0x2016,
+	SUBPMIC_PROP_INPUT_SUSPEND = 0x2017,
+	SUBPMIC_PROP_OTG_CFG = 0x2018,
+	SUBPMIC_PROP_CID_CFG = 0x2019,
+	SUBPMIC_PROP_CP_STATE = 0x201a,
+	SUBPMIC_PROP_QC_VOLT_CMD = 0x201b,
+	SUBPMIC_PROP_LPD_SBU1 = 0x201c,
+	SUBPMIC_PROP_LPD_SBU2 = 0x201d,
+	SUBPMIC_PROP_LPD_CC1 = 0x201e,
+	SUBPMIC_PROP_LPD_CC2 = 0x201f,
+	SUBPMIC_PROP_LPD_DP = 0x2020,
+	SUBPMIC_PROP_LPD_DM = 0x2021,
+	SUBPMIC_PROP_LPD_CONTROL = 0x2022,
+	SUBPMIC_PROP_LPD_UART_CONTROL = 0x2023,
+	SUBPMIC_PROP_PACK_VBAT = 0x2024,
+	SUBPMIC_PROP_EU_MODEL = 0x2025,
 	SUBPMIC_PROP_USB_ONLINE = 0x20001,
 	SUBPMIC_PROP_BUS_VOLT = 0x20002,
 	SUBPMIC_PROP_USB_SNS_VOLT = 0x20003,
@@ -156,6 +152,25 @@ struct qcom_subpmic_notify_entry {
 };
 
 static RAW_NOTIFIER_HEAD(hboost_notifier);
+static ATOMIC_NOTIFIER_HEAD(pen_charge_state_notifier);
+
+int pen_charge_state_notifier_register_client(struct notifier_block *nb)
+{
+	return atomic_notifier_chain_register(&pen_charge_state_notifier, nb);
+}
+EXPORT_SYMBOL(pen_charge_state_notifier_register_client);
+
+int pen_charge_state_notifier_unregister_client(struct notifier_block *nb)
+{
+	return atomic_notifier_chain_unregister(&pen_charge_state_notifier, nb);
+}
+EXPORT_SYMBOL(pen_charge_state_notifier_unregister_client);
+
+int mca_pen_charge_state_notify(unsigned long event, void *value)
+{
+	return atomic_notifier_call_chain(&pen_charge_state_notifier, event, value);
+}
+EXPORT_SYMBOL(mca_pen_charge_state_notify);
 
 int register_hboost_event_notifier(struct notifier_block *nb)
 {
@@ -265,11 +280,21 @@ SUBPMIC_GETTER(lpd_dm, SUBPMIC_PROP_LPD_DM)
 SUBPMIC_GETTER(lpd_control, SUBPMIC_PROP_LPD_CONTROL)
 SUBPMIC_GETTER(lpd_uart_control, SUBPMIC_PROP_LPD_UART_CONTROL)
 SUBPMIC_GETTER(pack_vbat, SUBPMIC_PROP_PACK_VBAT)
-SUBPMIC_GETTER(pack_ibat, SUBPMIC_PROP_PACK_IBAT)
-SUBPMIC_GETTER(pack_tbat, SUBPMIC_PROP_PACK_TBAT)
-SUBPMIC_GETTER(aicl_status, SUBPMIC_PROP_AICL_STATUS)
 SUBPMIC_GETTER(otg_gate_enable_status, SUBPMIC_PROP_OTG_GATE_EN_STATUS)
 SUBPMIC_GETTER(otg_boost_enable_status, SUBPMIC_PROP_OTG_BOOST_EN_STATUS)
+
+SUBPMIC_GETTER(otg_enable_status, SUBPMIC_PROP_OTG_BOOST_EN_STATUS)
+SUBPMIC_GETTER(otg_plugin_status, SUBPMIC_PROP_OTG_GATE_EN_STATUS)
+
+static int qcom_subpmic_get_otg_status(void *data, bool *status)
+{
+	int state = 0;
+	int ret = qcom_subpmic_get_otg_enable_status(data, &state);
+
+	if (!ret)
+		*status = state == 2;
+	return ret;
+}
 
 static int qcom_subpmic_get_online(void *data, int *online)
 {
@@ -325,7 +350,6 @@ SUBPMIC_SET_INT(wls_input_current_limit, SUBPMIC_PROP_WLS_INPUT_CURR_LIMIT)
 SUBPMIC_SET_INT(input_volt_limit, SUBPMIC_PROP_INPUT_VOLT_LIMIT)
 SUBPMIC_SET_INT(charge_current, SUBPMIC_PROP_CHARGE_CURRENT)
 SUBPMIC_SET_BOOL(enable_charging, SUBPMIC_PROP_ENABLE_CHARGING)
-SUBPMIC_SET_INT(buck_fsw, SUBPMIC_PROP_BUCK_FSW)
 SUBPMIC_SET_INT(term_current, SUBPMIC_PROP_TERM_CURRENT)
 SUBPMIC_SET_INT(term_volt, SUBPMIC_PROP_TERM_VOLT)
 SUBPMIC_SET_INT(prechg_volt, SUBPMIC_PROP_PRECHG_VOLT)
@@ -338,12 +362,10 @@ SUBPMIC_SET_INT(boost_enable, SUBPMIC_PROP_BOOST_ENABLE)
 SUBPMIC_SET_INT(boost_voltage, SUBPMIC_PROP_BOOST_VOLTAGE)
 SUBPMIC_SET_BOOL(aicl_enable, SUBPMIC_PROP_AICL_ENABLE)
 SUBPMIC_SET_BOOL(rerun_aicl, SUBPMIC_PROP_RERUN_AICL)
-SUBPMIC_SET_BOOL(restart_aicl, SUBPMIC_PROP_RESTART_AICL)
 SUBPMIC_SET_BOOL(wls_vdd_flag, SUBPMIC_PROP_WLS_VDD_FLAG)
 SUBPMIC_SET_INT(lpd_sbu1, SUBPMIC_PROP_LPD_SBU1)
 SUBPMIC_SET_INT(lpd_control, SUBPMIC_PROP_LPD_CONTROL)
 SUBPMIC_SET_INT(lpd_uart_control, SUBPMIC_PROP_LPD_UART_CONTROL)
-SUBPMIC_SET_INT(too_hot_limit, SUBPMIC_PROP_TOO_HOT_LIMIT)
 
 static int qcom_subpmic_set_ship_mode(void *data, bool en)
 {
@@ -376,6 +398,9 @@ static struct platform_bc12_class_ops g_qcom_pmic_bc12_ops = {
 static struct platform_class_buckchg_ops g_qcom_buckchg_ops = {
 	.is_init_ok = qcom_subpmic_is_init_ok,
 	.get_online = qcom_subpmic_get_online,
+	.get_otg_status = qcom_subpmic_get_otg_status,
+	.get_otg_enable_status = qcom_subpmic_get_otg_enable_status,
+	.get_otg_plugin_status = qcom_subpmic_get_otg_plugin_status,
 	.is_charge_done = qcom_subpmic_is_charge_done,
 	.get_input_curr_lmt = qcom_subpmic_get_input_current_limit,
 	.get_bus_curr = qcom_subpmic_get_bus_curr,
@@ -394,7 +419,6 @@ static struct platform_class_buckchg_ops g_qcom_buckchg_ops = {
 	.set_input_volt_lmt = qcom_subpmic_set_input_volt_limit,
 	.set_ichg = qcom_subpmic_set_charge_current,
 	.set_chg = qcom_subpmic_set_enable_charging,
-	.set_buck_fsw = qcom_subpmic_set_buck_fsw,
 	.set_term_curr = qcom_subpmic_set_term_current,
 	.set_term_volt = qcom_subpmic_set_term_volt,
 	.set_prechg_volt = qcom_subpmic_set_prechg_volt,
@@ -412,7 +436,6 @@ static struct platform_class_buckchg_ops g_qcom_buckchg_ops = {
 	.set_boost_voltage = qcom_subpmic_set_boost_voltage,
 	.set_aicl_enable = qcom_subpmic_set_aicl_enable,
 	.set_rerun_aicl = qcom_subpmic_set_rerun_aicl,
-	.set_restart_aicl = qcom_subpmic_set_restart_aicl,
 	.is_support_cid = qcom_subpmic_is_support_cid,
 	.set_ship_mode = qcom_subpmic_set_ship_mode,
 	.get_ship_mode = qcom_subpmic_get_ship_mode,
@@ -431,11 +454,7 @@ static struct platform_class_buckchg_ops g_qcom_buckchg_ops = {
 	.set_lpd_uart_control = qcom_subpmic_set_lpd_uart_control,
 	.get_lpd_uart_control = qcom_subpmic_get_lpd_uart_control,
 	.get_pack_vbat = qcom_subpmic_get_pack_vbat,
-	.get_pack_ibat = qcom_subpmic_get_pack_ibat,
 	.set_eu_model = qcom_subpmic_set_eu_model,
-	.get_aicl_status = qcom_subpmic_get_aicl_status,
-	.set_too_hot_limit = qcom_subpmic_set_too_hot_limit,
-	.get_pack_tbat = qcom_subpmic_get_pack_tbat,
 };
 
 static void qcom_subpmic_update_usb_type_work(struct work_struct *work)
@@ -473,7 +492,7 @@ static void qcom_subpmic_update_usb_type_work(struct work_struct *work)
 					       MCA_EVENT_USB_CONNECT, NULL);
 		}
 	}
-	rc = mca_adsp_glink_read_prop(SUBPMIC_PROP_USB_REAL_TYPE, &real_type,
+	rc = mca_adsp_glink_read_prop(SUBPMIC_PROP_USB_CHARGE_TYPE, &real_type,
 				      sizeof(real_type));
 	if (rc < 0)
 		goto retry;

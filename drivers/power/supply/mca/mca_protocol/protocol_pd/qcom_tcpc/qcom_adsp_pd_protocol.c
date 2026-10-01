@@ -45,15 +45,14 @@ enum adsp_pd_prop {
 	PD_PROP_PPS_MAX_POWER = 0x2101b,
 	PD_PROP_HAS_DP = 0x2101e,
 	PD_PROP_CID_STATUS = 0x2101f,
-	PD_PROP_OTG_PLUGIN = 0x21020,
-	PD_PROP_CC_TOGGLE = 0x21021,
-	PD_PROP_SNK_SRC_MODE = 0x21022,
-	PD_PROP_CC_STATUS = 0x21023,
-	PD_PROP_CC_SHORT_VBUS = 0x21024,
-	PD_PROP_PPS_PTF = 0x21025,
-	PD_PROP_SUSPEND_SUPPORT = 0x21026,
-	PD_PROP_ZIMI_CYPRESS = 0x21027,
-	PD_PROP_GEAR_SHIFT = 0x21028,
+	PD_PROP_OTG_PLUGIN = 0x200d,
+	PD_PROP_CC_TOGGLE = 0x21020,
+	PD_PROP_SNK_SRC_MODE = 0x21021,
+	PD_PROP_CC_STATUS = 0x21022,
+	PD_PROP_CC_SHORT_VBUS = 0x21023,
+	PD_PROP_PPS_PTF = 0x21024,
+	PD_PROP_SUSPEND_SUPPORT = 0x21025,
+	PD_PROP_ZIMI_CYPRESS = 0x21026,
 };
 
 #define ADSP_REAL_TYPE_PD 0x0b
@@ -82,7 +81,8 @@ static int adsp_write(int prop, void *value, size_t size)
 
 static int adsp_pd_get_pps_max_power(unsigned int *power, void *data)
 {
-	return adsp_read(PD_PROP_PPS_MAX_POWER, power, sizeof(*power));
+	/* Dada uses this legacy-named callback to send the power budget. */
+	return adsp_write(PD_PROP_PPS_MAX_POWER, power, sizeof(*power));
 }
 
 static int adsp_pd_select_pps_pdo(int volt, int curr, void *data)
@@ -106,10 +106,6 @@ static int adsp_pd_set_fixed_volt(int volt, void *data)
 	return adsp_write(PD_PROP_FIXED_PD_VOLT, &val, sizeof(val));
 }
 
-static int adsp_pd_set_gear_shift(int gear, void *data)
-{
-	return adsp_write(PD_PROP_GEAR_SHIFT, &gear, sizeof(gear));
-}
 
 static int adsp_pd_get_pps_max_cur(unsigned int *curr, void *data)
 {
@@ -399,7 +395,6 @@ static struct protocol_class_pd_ops adsp_pd_ops = {
 	.protocol_pd_pps_pdo_select = adsp_pd_select_pps_pdo,
 	.protocol_pd_get_pps_ptf = adsp_pd_get_pps_ptf,
 	.protocol_pd_fixed_pdo_set_vol = adsp_pd_set_fixed_volt,
-	.protocol_pd_set_gear_shift = adsp_pd_set_gear_shift,
 	.protocol_pd_get_pps_max_cur = adsp_pd_get_pps_max_cur,
 	.protocol_pd_get_pps_status = adsp_pd_get_pps_status,
 	.protocol_pd_set_pd_active = adsp_pd_set_active,
