@@ -24,6 +24,8 @@ contains pairs of voltage threshold and maximum current; ``null`` selects the
 row's fixed current. Tables are bounded to 15 temperature rows and four voltage
 steps per row, matching the public source. Temperature rows cannot overlap and
 voltage thresholds must strictly increase.
+The official Dada tables use ``-65535`` and ``65535`` as the outer temperature
+bounds; these sentinel values are supported without narrowing the DT ranges.
 
 ``jeita_para_ffc`` is optional. Normal policy remains available if an FFC table
 is absent. The source's ``has-global-batt-para``, ``has-tmp-batt-para``,
@@ -62,7 +64,11 @@ Validation and remaining work
 
 ``tools/testing/selftests/mca/jeita_policy_test.c`` exercises temperature edges,
 hysteresis, hard stops, voltage-step changes, malformed tables and termination
-overrides. The MCA compile workflow runs this test with address/undefined-behavior
+overrides. It also validates the actual CN/Global normal/FFC JEITA tables from
+``MiCode/kernel_devicetree`` commit
+``233bd52eddce9f081f8e87802796f5994babafa5`` in
+``qcom/dada-charger-common.dtsi``. Those tables are fixtures for tests only.
+The MCA compile workflow runs this test with address/undefined-behavior
 sanitizers before compiling the arm64 module tree.
 
 Compilation with ``modules_prepare`` checks source/Kbuild/module composition.

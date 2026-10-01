@@ -4,6 +4,7 @@
 #include <stdio.h>
 #include <string.h>
 #include "../../../../drivers/power/supply/mca/mca_strategy/strategy_jeita/mca_jeita_policy.h"
+#include "dada_jeita_tables.h"
 
 static unsigned int checks;
 #define CHECK(condition) do { assert(condition); checks++; } while (0)
@@ -97,6 +98,26 @@ int main(void)
 	CHECK(copy.bands[2].temp_low == table.bands[2].temp_low);
 	CHECK(copy.bands[2].charge_current == table.bands[2].charge_current);
 	CHECK(mca_jeita_table_valid(&copy));
+
+	/* Actual Dada CN/Global DT tables, including sentinel bounds and FFC. */
+	CHECK(mca_jeita_table_valid(&dada_cn_normal));
+	CHECK(mca_jeita_table_valid(&dada_cn_ffc));
+	CHECK(mca_jeita_table_valid(&dada_global_normal));
+	CHECK(mca_jeita_table_valid(&dada_global_ffc));
+	CHECK(mca_jeita_find_band(&dada_cn_normal, -655350) == 0);
+	CHECK(mca_jeita_find_band(&dada_cn_normal, -655351) == -1);
+	CHECK(mca_jeita_find_band(&dada_cn_normal, 655349) == 7);
+	CHECK(mca_jeita_find_band(&dada_cn_normal, 655350) == -1);
+	CHECK(mca_jeita_find_band(&dada_cn_normal, -91) == 0);
+	CHECK(mca_jeita_find_band(&dada_cn_normal, -90) == 1);
+	CHECK(mca_jeita_select_band(&dada_cn_normal, 550, 6, 0) == 7);
+	CHECK(mca_jeita_select_current(&dada_cn_normal.bands[1], 4250, -1, 50) == 518);
+	CHECK(mca_jeita_find_band(&dada_cn_ffc, 149) == -1);
+	CHECK(mca_jeita_find_band(&dada_cn_ffc, 150) == 0);
+	CHECK(dada_cn_normal.bands[5].vterm == 4510);
+	CHECK(dada_global_normal.bands[5].vterm == 4480);
+	CHECK(dada_cn_ffc.bands[0].vterm == 4580);
+	CHECK(dada_global_ffc.bands[0].vterm == 4530);
 
 	printf("JEITA policy: %u checks passed\n", checks);
 	return 0;

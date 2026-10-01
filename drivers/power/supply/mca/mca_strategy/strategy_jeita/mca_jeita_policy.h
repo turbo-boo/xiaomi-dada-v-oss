@@ -57,7 +57,7 @@ static inline int mca_jeita_table_valid(const struct mca_jeita_table *table)
 		const struct mca_jeita_band *band = &table->bands[i];
 
 		/* Bounds protect subsequent Celsius -> deci-Celsius arithmetic. */
-		if (band->temp_low < -1000 || band->temp_high > 1000 ||
+		if (band->temp_low < -65535 || band->temp_high > 65535 ||
 		    band->temp_low >= band->temp_high ||
 		    band->low_hyst < 0 || band->low_hyst > 1000 ||
 		    band->high_hyst < 0 || band->high_hyst > 1000 ||
