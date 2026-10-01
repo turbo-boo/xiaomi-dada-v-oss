@@ -312,10 +312,10 @@ static int qcom_subpmic_get_ship_mode(void *data, bool *en)
 
 #define SUBPMIC_SET_INT(_name, _prop) \
 static int qcom_subpmic_set_##_name(void *data, int value) \
-{ int val = value; mca_adsp_glink_write_prop((_prop), &val, sizeof(val)); return 0; }
+{ int val = value; return mca_adsp_glink_write_prop((_prop), &val, sizeof(val)); }
 #define SUBPMIC_SET_BOOL(_name, _prop) \
 static int qcom_subpmic_set_##_name(void *data, bool value) \
-{ u8 val = value; mca_adsp_glink_write_prop((_prop), &val, sizeof(val)); return 0; }
+{ u8 val = value; return mca_adsp_glink_write_prop((_prop), &val, sizeof(val)); }
 
 SUBPMIC_SET_BOOL(input_suspend, SUBPMIC_PROP_INPUT_SUSPEND)
 SUBPMIC_SET_BOOL(wireless_input_suspend, SUBPMIC_PROP_WLS_INPUT_SUSPEND)

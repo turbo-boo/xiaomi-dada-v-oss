@@ -110,16 +110,30 @@ int mca_smartchg_if_ops_register(struct mca_smartchg_if_ops *ops)
 }
 EXPORT_SYMBOL(mca_smartchg_if_ops_register);
 
-static struct mca_smartchg_if_ops *mca_smartchg_if_get_ops(unsigned int type)
+void mca_smartchg_if_ops_unregister(struct mca_smartchg_if_ops *ops)
 {
-	struct mca_smartchg_if_ops *ops = NULL;
+	if (!ops || ops->type < 0 || ops->type >= MCA_SMARTCHG_IF_CHG_TYPE_END)
+		return;
+	mutex_lock(&mca_smartchg_ops_lock);
+	if (g_mca_smartchg_if_ops[ops->type] == ops)
+		g_mca_smartchg_if_ops[ops->type] = NULL;
+	mutex_unlock(&mca_smartchg_ops_lock);
+}
+EXPORT_SYMBOL(mca_smartchg_if_ops_unregister);
 
-	if (type >= MCA_SMARTCHG_IF_CHG_TYPE_END)
-		return NULL;
+static int mca_smartchg_update_baa(unsigned int type, char *payload,
+				 int ffc_count, int normal_count)
+{
+	struct mca_smartchg_if_ops *ops;
+	int ret = 0;
+
+	/* Serialize callback execution with consumer unregister. */
 	mutex_lock(&mca_smartchg_ops_lock);
 	ops = g_mca_smartchg_if_ops[type];
+	if (ops && ops->update_baa_para)
+		ret = ops->update_baa_para(ops->data, payload, ffc_count, normal_count);
 	mutex_unlock(&mca_smartchg_ops_lock);
-	return ops;
+	return ret;
 }
 
 static void mca_smartchg_apply_delta_fv(int value)
@@ -410,7 +424,6 @@ static int smart_charge_handle_baa_data(struct smart_charge_info *info,
 					const char *buf)
 {
 	const struct smart_basp_header *h;
-	struct mca_smartchg_if_ops *ops;
 	size_t offset;
 	int ret;
 
@@ -423,18 +436,17 @@ static int smart_charge_handle_baa_data(struct smart_charge_info *info,
 		return 0;
 
 	offset = sizeof(*h);
-	ops = mca_smartchg_if_get_ops(MCA_SMARTCHG_IF_CHG_TYPE_JEITA);
-	if (ops && ops->update_baa_para)
-		ops->update_baa_para(ops->data, (char *)buf + offset,
-				     h->jeita_ffc_term_size,
-				     h->jeita_normal_term_size);
+	ret = mca_smartchg_update_baa(MCA_SMARTCHG_IF_CHG_TYPE_JEITA,
+		(char *)buf + offset, h->jeita_ffc_term_size, h->jeita_normal_term_size);
+	if (ret)
+		return ret;
 	offset += ((size_t)h->jeita_ffc_term_size + h->jeita_normal_term_size) *
 		  sizeof(struct smart_batt_jeita_term_para);
 
-	ops = mca_smartchg_if_get_ops(MCA_SMARTCHG_IF_CHG_TYPE_QC);
-	if (ops && ops->update_baa_para)
-		ops->update_baa_para(ops->data, (char *)buf + offset,
-				     h->wired_ffc_size, h->wired_normal_size);
+	ret = mca_smartchg_update_baa(MCA_SMARTCHG_IF_CHG_TYPE_QC,
+		(char *)buf + offset, h->wired_ffc_size, h->wired_normal_size);
+	if (ret)
+		return ret;
 	ret = smart_charge_validate_specs(buf, h->total_len,
 					 h->wired_ffc_size, &offset);
 	if (ret)
@@ -444,10 +456,10 @@ static int smart_charge_handle_baa_data(struct smart_charge_info *info,
 	if (ret)
 		return ret;
 
-	ops = mca_smartchg_if_get_ops(MCA_SMARTCHG_IF_CHG_TYPE_WL_QC);
-	if (ops && ops->update_baa_para)
-		ops->update_baa_para(ops->data, (char *)buf + offset,
-				     h->wls_ffc_size, h->wls_normal_size);
+	ret = mca_smartchg_update_baa(MCA_SMARTCHG_IF_CHG_TYPE_WL_QC,
+		(char *)buf + offset, h->wls_ffc_size, h->wls_normal_size);
+	if (ret)
+		return ret;
 
 	mca_log_info("BASP applied type=%u len=%u jeita=%u/%u wired=%u/%u wls=%u/%u\n",
 		     h->type, h->total_len, h->jeita_ffc_term_size,

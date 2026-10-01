@@ -99,5 +99,8 @@ int mca_strategy_func_set_config(int type, int config, int value);
 int mca_strategy_ops_register(unsigned int type, mca_strategy_func func,
 			      mca_strategy_get_status get_func,
 			      mca_strategy_set_config set_config, void *data);
+void mca_strategy_ops_unregister(unsigned int type, void *data);
+int mca_buckchg_policy_vote(const char *name, const char *client,
+			    bool enabled, int value);
 
 #endif

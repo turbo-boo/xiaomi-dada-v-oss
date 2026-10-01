@@ -16,6 +16,7 @@
 #include <mca/platform/platform_bc12_class.h>
 #include <mca/platform/platform_buckchg_class.h>
 #include <mca/protocol/protocol_class.h>
+#include <mca/strategy/strategy_class.h>
 
 #ifndef MCA_LOG_TAG
 #define MCA_LOG_TAG "business_charger"
@@ -145,12 +146,12 @@ static ssize_t dada_charger_sysfs_store(struct device *dev,
 			MAIN_BUCK_CHARGER, value);
 		break;
 	case DADA_CHARGER_ATTR_TERM_CURRENT:
-		ret = platform_class_buckchg_ops_set_term_curr(MAIN_BUCK_CHARGER,
-							 value);
+		ret = mca_buckchg_policy_vote("term_curr", "charger_sysfs", true, value);
 		break;
 	case DADA_CHARGER_ATTR_TERM_VOLTAGE:
-		ret = platform_class_buckchg_ops_set_term_volt(MAIN_BUCK_CHARGER,
-							 value);
+		if (!value)
+			return -EINVAL;
+		ret = mca_buckchg_policy_vote("term_volt", "charger_sysfs", true, value);
 		break;
 	default:
 		return -EPERM;

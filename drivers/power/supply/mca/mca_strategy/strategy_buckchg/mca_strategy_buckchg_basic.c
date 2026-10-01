@@ -9,6 +9,7 @@
 #include <linux/errno.h>
 #include <linux/kernel.h>
 #include <linux/module.h>
+#include <linux/mutex.h>
 #include <linux/of.h>
 #include <linux/platform_device.h>
 
@@ -37,10 +38,54 @@ struct dada_buck_strategy {
 	struct mca_votable *input_limit_voter;
 	struct mca_votable *charge_limit_voter;
 	struct mca_votable *power_limit_voter;
+	struct mca_votable *stock_enable_voter;
+	struct mca_votable *stock_current_voter;
+	struct mca_votable *term_voltage_voter;
+	struct mca_votable *term_current_voter;
 	bool online;
 	int charge_type;
 	unsigned int max_power;
 };
+
+static DEFINE_MUTEX(dada_buck_policy_lock);
+static struct dada_buck_strategy *dada_buck_policy;
+
+/* An exported bridge pins the buck module and serializes voter teardown. */
+int mca_buckchg_policy_vote(const char *name, const char *client,
+			    bool enabled, int value)
+{
+	struct dada_buck_strategy *st;
+	struct mca_votable *voter;
+	int ret;
+
+	if (!name || !client)
+		return -EINVAL;
+	mutex_lock(&dada_buck_policy_lock);
+	st = dada_buck_policy;
+	if (!st) {
+		ret = -EAGAIN;
+		goto out;
+	}
+	if (!strcmp(name, "chg_enable"))
+		voter = st->stock_enable_voter;
+	else if (!strcmp(name, "buck_charge_curr"))
+		voter = st->stock_current_voter;
+	else if (!strcmp(name, "term_volt"))
+		voter = st->term_voltage_voter;
+	else if (!strcmp(name, "term_curr"))
+		voter = st->term_current_voter;
+	else {
+		ret = -EINVAL;
+		goto out;
+	}
+	ret = mca_vote(voter, client, enabled, value);
+	if (!ret)
+		ret = mca_rerun_election(voter);
+out:
+	mutex_unlock(&dada_buck_policy_lock);
+	return ret;
+}
+EXPORT_SYMBOL(mca_buckchg_policy_vote);
 
 static void dada_buck_refresh(struct dada_buck_strategy *st)
 {
@@ -115,6 +160,47 @@ static int dada_buck_power_vote_cb(struct mca_votable *votable, void *data,
 	return 0;
 }
 
+/* Onyx JEITA uses an AND enable election and mA/mV termination limits. */
+static int dada_buck_stock_enable_cb(struct mca_votable *votable, void *data,
+				    int result, const char *client)
+{
+	struct dada_buck_strategy *st = data;
+	int ret = mca_vote(st->charge_disable_voter, "stock_chg_enable",
+			   true, !result);
+
+	return ret ? ret : mca_rerun_election(st->charge_disable_voter);
+}
+
+static int dada_buck_stock_current_cb(struct mca_votable *votable, void *data,
+				     int result, const char *client)
+{
+	struct dada_buck_strategy *st = data;
+	int ret = mca_vote(st->charge_limit_voter, "stock_buck_charge_curr",
+			   result != INT_MAX, result);
+
+	return ret ? ret : mca_rerun_election(st->charge_limit_voter);
+}
+
+static int dada_buck_term_voltage_cb(struct mca_votable *votable, void *data,
+				    int result, const char *client)
+{
+	if (result == INT_MAX)
+		return 0;
+	if (result <= 0)
+		return -EINVAL;
+	return platform_class_buckchg_ops_set_term_volt(MAIN_BUCK_CHARGER, result);
+}
+
+static int dada_buck_term_current_cb(struct mca_votable *votable, void *data,
+				    int result, const char *client)
+{
+	if (result == INT_MAX)
+		return 0;
+	if (result < 0)
+		return -EINVAL;
+	return platform_class_buckchg_ops_set_term_curr(MAIN_BUCK_CHARGER, result);
+}
+
 static int dada_buck_create_voters(struct dada_buck_strategy *st)
 {
 	st->input_suspend_voter = mca_create_votable(
@@ -146,11 +232,35 @@ static int dada_buck_create_voters(struct dada_buck_strategy *st)
 		dada_buck_power_vote_cb, DADA_BUCK_POWER_DEFAULT, st);
 	if (IS_ERR(st->power_limit_voter))
 		return PTR_ERR(st->power_limit_voter);
+	st->stock_enable_voter = mca_create_votable("chg_enable", MCA_VOTE_AND,
+		dada_buck_stock_enable_cb, 1, st);
+	if (IS_ERR(st->stock_enable_voter))
+		return PTR_ERR(st->stock_enable_voter);
+	st->stock_current_voter = mca_create_votable("buck_charge_curr", MCA_VOTE_MIN,
+		dada_buck_stock_current_cb, INT_MAX, st);
+	if (IS_ERR(st->stock_current_voter))
+		return PTR_ERR(st->stock_current_voter);
+	st->term_voltage_voter = mca_create_votable("term_volt", MCA_VOTE_MIN,
+		dada_buck_term_voltage_cb, INT_MAX, st);
+	if (IS_ERR(st->term_voltage_voter))
+		return PTR_ERR(st->term_voltage_voter);
+	st->term_current_voter = mca_create_votable("term_curr", MCA_VOTE_MIN,
+		dada_buck_term_current_cb, INT_MAX, st);
+	if (IS_ERR(st->term_current_voter))
+		return PTR_ERR(st->term_current_voter);
 	return 0;
 }
 
 static void dada_buck_destroy_voters(struct dada_buck_strategy *st)
 {
+	if (!IS_ERR_OR_NULL(st->term_current_voter))
+		mca_destroy_votable(st->term_current_voter);
+	if (!IS_ERR_OR_NULL(st->term_voltage_voter))
+		mca_destroy_votable(st->term_voltage_voter);
+	if (!IS_ERR_OR_NULL(st->stock_current_voter))
+		mca_destroy_votable(st->stock_current_voter);
+	if (!IS_ERR_OR_NULL(st->stock_enable_voter))
+		mca_destroy_votable(st->stock_enable_voter);
 	if (!IS_ERR_OR_NULL(st->power_limit_voter))
 		mca_destroy_votable(st->power_limit_voter);
 	if (!IS_ERR_OR_NULL(st->charge_limit_voter))
@@ -453,6 +563,9 @@ static int dada_buck_strategy_probe(struct platform_device *pdev)
 		mca_log_info("type notifier unavailable: %d\n", ret);
 
 	dada_buck_refresh(st);
+	mutex_lock(&dada_buck_policy_lock);
+	dada_buck_policy = st;
+	mutex_unlock(&dada_buck_policy_lock);
 	mca_log_info("buck strategy/interface registered online=%d type=%d power=%u\n",
 		     st->online, st->charge_type, st->max_power);
 	return 0;
@@ -472,7 +585,11 @@ static int dada_buck_strategy_remove(struct platform_device *pdev)
 					  &st->type_nb);
 	mca_event_block_notify_unregister(MCA_EVENT_TYPE_CHARGER_CONNECT,
 					  &st->connect_nb);
+	mutex_lock(&dada_buck_policy_lock);
+	if (dada_buck_policy == st)
+		dada_buck_policy = NULL;
 	dada_buck_destroy_voters(st);
+	mutex_unlock(&dada_buck_policy_lock);
 	return 0;
 }
 

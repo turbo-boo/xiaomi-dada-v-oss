@@ -73,6 +73,7 @@ struct mca_smartchg_if_ops {
 };
 
 int mca_smartchg_if_ops_register(struct mca_smartchg_if_ops *ops);
+void mca_smartchg_if_ops_unregister(struct mca_smartchg_if_ops *ops);
 void mca_smartchg_set_scene(int scene);
 int mca_smartchg_get_scene(void);
 void mca_smartchg_set_board_temp(int board_temp);
