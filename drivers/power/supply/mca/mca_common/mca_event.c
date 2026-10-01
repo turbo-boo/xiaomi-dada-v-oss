@@ -14,6 +14,10 @@ struct mca_event_dev {
 
 static struct mca_event_dev *mca_event_dev;
 static struct blocking_notifier_head mca_event_heads[MCA_EVENT_TYPE_END];
+static struct attribute *mca_event_attrs[] = { NULL };
+static const struct attribute_group mca_event_group = {
+	.attrs = mca_event_attrs,
+};
 
 int mca_event_block_notify_register(unsigned int type, struct notifier_block *nb)
 {
@@ -94,8 +98,6 @@ EXPORT_SYMBOL(mca_event_report_multiple_uevent);
 
 static int __init mca_event_init(void)
 {
-	struct attribute *attrs[] = { NULL };
-	struct attribute_group group = { .attrs = attrs };
 	int i;
 
 	mca_event_dev = kzalloc(sizeof(*mca_event_dev), GFP_KERNEL);
@@ -103,11 +105,21 @@ static int __init mca_event_init(void)
 		return -ENOMEM;
 	for (i = 0; i < MCA_EVENT_TYPE_END; i++)
 		BLOCKING_INIT_NOTIFIER_HEAD(&mca_event_heads[i]);
-	mca_event_dev->dev = mca_sysfs_create_group("xm_power", "mca_event", &group);
+	mca_event_dev->dev = mca_sysfs_create_group("xm_power", "mca_event",
+						 &mca_event_group);
 	/* Notifier functionality remains valid if sysfs creation is unavailable. */
 	return 0;
 }
 module_init(mca_event_init);
+
+static void __exit mca_event_exit(void)
+{
+	mca_sysfs_remove_group("xm_power", mca_event_dev->dev,
+			       &mca_event_group);
+	kfree(mca_event_dev);
+	mca_event_dev = NULL;
+}
+module_exit(mca_event_exit);
 
 MODULE_DESCRIPTION("Xiaomi MCA event notifier core");
 MODULE_LICENSE("GPL v2");

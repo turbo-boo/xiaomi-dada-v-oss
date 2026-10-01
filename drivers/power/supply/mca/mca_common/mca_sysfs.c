@@ -389,6 +389,40 @@ void mca_debugfs_remove_groups(void *dev_data)
 }
 EXPORT_SYMBOL(mca_debugfs_remove_groups);
 
+static void mca_sysfs_cleanup(void)
+{
+	struct mca_class_node *cls, *next_cls;
+	struct mca_device_node *devn, *next_dev;
+#ifdef CONFIG_DEBUG_FS
+	struct mca_debug_group *group, *next_group;
+
+	mutex_lock(&mca_debug_groups_lock);
+	list_for_each_entry_safe(group, next_group, &mca_debug_groups, node) {
+		list_del(&group->node);
+		debugfs_remove_recursive(group->dir);
+		kfree(group->attrs);
+		kfree(group);
+	}
+	debugfs_remove_recursive(mca_debug_root);
+	mca_debug_root = NULL;
+	mutex_unlock(&mca_debug_groups_lock);
+#endif
+	mutex_lock(&mca_sysfs_lock);
+	list_for_each_entry_safe(cls, next_cls, &mca_classes, node) {
+		list_for_each_entry_safe(devn, next_dev, &cls->devices, node) {
+			list_del(&devn->node);
+			device_unregister(devn->dev);
+			kfree(devn->name);
+			kfree(devn);
+		}
+		list_del(&cls->node);
+		class_destroy(cls->class);
+		kfree(cls->name);
+		kfree(cls);
+	}
+	mutex_unlock(&mca_sysfs_lock);
+}
+
 static int __init mca_sysfs_init(void)
 {
 	static const char * const devices[] = {
@@ -400,11 +434,21 @@ static int __init mca_sysfs_init(void)
 	cls = mca_get_class("xm_power");
 	if (!cls)
 		return -ENOMEM;
-	for (i = 0; i < ARRAY_SIZE(devices); i++)
-		mca_get_device(cls, devices[i]);
+	for (i = 0; i < ARRAY_SIZE(devices); i++) {
+		if (!mca_get_device(cls, devices[i])) {
+			mca_sysfs_cleanup();
+			return -ENOMEM;
+		}
+	}
 	return 0;
 }
 module_init(mca_sysfs_init);
+
+static void __exit mca_sysfs_exit(void)
+{
+	mca_sysfs_cleanup();
+}
+module_exit(mca_sysfs_exit);
 
 MODULE_DESCRIPTION("Xiaomi MCA sysfs/debugfs core");
 MODULE_LICENSE("GPL v2");

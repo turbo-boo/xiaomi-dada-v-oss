@@ -112,6 +112,17 @@ independently recorded stock evidence. Unknown/dynamic VDM arguments are not
 claimed as constant wire-call evidence. These checks do not establish symbol
 version CRCs, structure layout compatibility or a production GKI ABI result.
 
+The optional QEMU smoke test boots the generic arm64 Image on ``virt`` and
+loads all 52 MCA modules with their dependency closure. It checks two complete
+load/unload cycles, removal of the ``xm_power`` class and an empty module list.
+It exercises module initialization, registration and cleanup without MCA DT
+nodes, I2C chips or ADSP services; driver probe/remove paths are not covered.
+It requires QEMU and a static AArch64 BusyBox binary::
+
+  python3 tools/testing/selftests/mca/qemu_module_smoke.py \
+    --kernel-out /path/to/kernel-out --busybox /path/to/arm64-busybox \
+    --log /path/to/mca-qemu.log
+
 Device probing, charging/thermal/SOC accuracy, reconnect behavior, suspend and
 shutdown, wireless power/FOD/reverse behavior and firmware compatibility still
 require hardware validation. These are not inferred from successful builds.
