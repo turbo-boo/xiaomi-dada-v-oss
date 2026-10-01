@@ -74,6 +74,8 @@ contains two 32768-byte images; neither equals the included Onyx image
 The stock image hashes are recorded in dada_stock_contract.json. Destructive
 firmware operations therefore return ``-EOPNOTSUPP`` unless the board explicitly supplies
 ``xiaomi,allow-firmware-update``. The official Dada DT does not opt in.
+Firmware status still reads the installed version, but does not advertise
+an upgrade against the unapproved Onyx image while that option is disabled.
 No device firmware is written by the validation workflow.
 
 The MIEV reporting implementation follows Onyx and requires its Xiaomi MIEV

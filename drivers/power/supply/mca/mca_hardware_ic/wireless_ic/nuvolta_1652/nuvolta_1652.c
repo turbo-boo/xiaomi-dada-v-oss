@@ -2348,6 +2348,10 @@ static int nuvolta_1652_check_firmware_state(bool *update, void *data)
 	bool status = true;
 	u8 read_buf[128];
 
+	if (!update)
+		return -EINVAL;
+	*update = false;
+
 	if (!chip->proc_data.power_good_flag)
 		return -1;
 
@@ -2374,6 +2378,10 @@ static int nuvolta_1652_check_firmware_state(bool *update, void *data)
 	mca_log_info("ic fw version: %02x.%02x.%02x\n",
 		     chip->wls_fw_data->fw_boot_id, chip->wls_fw_data->fw_rx_id,
 		     chip->wls_fw_data->fw_tx_id);
+
+	/* An unapproved Onyx image must not advertise a Dada FW upgrade. */
+	if (!chip->allow_fw_update)
+		return 0;
 
 	if ((chip->wls_fw_data->fw_boot_id != CRC_CHECK_ERR_VER) &&
 	    (chip->wls_fw_data->fw_boot_id >=
